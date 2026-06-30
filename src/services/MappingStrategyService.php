@@ -12,7 +12,7 @@ class MappingStrategyService extends Component
         'category' => 'category',
         'email' => 'email',
         'entry' => 'entry',
-        'phone' => 'phone',
+        'phone' => 'tel',
         'sms' => 'sms',
         'url' => 'url',
     ];

@@ -147,19 +147,7 @@ class AuditService extends Component
 
     private function normalizeHyperType(string $type): string
     {
-        $type = strtolower($type);
-        $type = preg_replace('/^.*\\\\/', '', $type);
-
-        return match ($type) {
-            'asset' => 'asset',
-            'category' => 'category',
-            'email' => 'email',
-            'entry' => 'entry',
-            'phone' => 'phone',
-            'sms' => 'sms',
-            'url' => 'url',
-            default => $type,
-        };
+        return preg_replace('/^.*\\\\/', '', strtolower($type));
     }
 
     private function extractCustomFieldLayouts(array $settings): array
@@ -213,7 +201,7 @@ class AuditService extends Component
                     continue;
                 }
 
-                $field = $this->findFieldByHandle($handle);
+                $field = Craft::$app->getFields()->getFieldByHandle($handle);
                 if (!$field || !$field instanceof Link) {
                     continue;
                 }
@@ -248,17 +236,6 @@ class AuditService extends Component
         return [];
     }
 
-    private function findFieldByHandle(string $handle): ?object
-    {
-        foreach (Craft::$app->getFields()->getAllFields(false) as $field) {
-            if ((string)$field->handle === $handle) {
-                return $field;
-            }
-        }
-
-        return null;
-    }
-
     private function findCodeReferences(): array
     {
         $patterns = [
@@ -276,42 +253,17 @@ class AuditService extends Component
             'Hyper',
         ];
 
-        $roots = [
-            Craft::getAlias('@root/templates'),
-            Craft::getAlias('@root/modules'),
-            Craft::getAlias('@root/src'),
-            Craft::getAlias('@root/config'),
-        ];
-
         $references = [];
 
-        foreach ($roots as $root) {
-            if (!$root || !is_dir($root)) {
-                continue;
-            }
-
-            $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root));
-            foreach ($iterator as $fileInfo) {
-                if (!$fileInfo->isFile()) {
-                    continue;
-                }
-
-                $contents = @file($fileInfo->getPathname());
-                if ($contents === false) {
-                    continue;
-                }
-
-                foreach ($contents as $lineNumber => $line) {
-                    foreach ($patterns as $pattern) {
-                        if (str_contains($line, $pattern)) {
-                            $references[] = [
-                                'file' => $fileInfo->getPathname(),
-                                'line' => $lineNumber + 1,
-                                'pattern' => $pattern,
-                                'snippet' => trim($line),
-                            ];
-                        }
-                    }
+        foreach ($this->scanSourceLines() as [$file, $line, $text]) {
+            foreach ($patterns as $pattern) {
+                if (str_contains($text, $pattern)) {
+                    $references[] = [
+                        'file' => $file,
+                        'line' => $line,
+                        'pattern' => $pattern,
+                        'snippet' => trim($text),
+                    ];
                 }
             }
         }
@@ -321,14 +273,42 @@ class AuditService extends Component
 
     public function findMismatchReferences(): array
     {
+        $matches = [];
+
+        foreach ($this->scanSourceLines() as [$file, $line, $text]) {
+            foreach (self::MISMATCH_PATTERNS as $mismatch) {
+                if (!str_contains($text, $mismatch['pattern'])) {
+                    continue;
+                }
+
+                $matches[] = [
+                    'file' => $file,
+                    'line' => $line,
+                    'pattern' => $mismatch['pattern'],
+                    'replacement' => $mismatch['replacement'],
+                    'reason' => $mismatch['reason'],
+                    'snippet' => trim($text),
+                ];
+            }
+        }
+
+        return $matches;
+    }
+
+    /**
+     * Yields [path, 1-based line number, line text] for every line of every readable file under
+     * the project template/module/src/config roots.
+     *
+     * @return \Generator<array{0:string, 1:int, 2:string}>
+     */
+    private function scanSourceLines(): \Generator
+    {
         $roots = [
             Craft::getAlias('@root/templates'),
             Craft::getAlias('@root/modules'),
             Craft::getAlias('@root/src'),
             Craft::getAlias('@root/config'),
         ];
-
-        $matches = [];
 
         foreach ($roots as $root) {
             if (!$root || !is_dir($root)) {
@@ -347,24 +327,9 @@ class AuditService extends Component
                 }
 
                 foreach ($contents as $lineNumber => $line) {
-                    foreach (self::MISMATCH_PATTERNS as $mismatch) {
-                        if (!str_contains($line, $mismatch['pattern'])) {
-                            continue;
-                        }
-
-                        $matches[] = [
-                            'file' => $fileInfo->getPathname(),
-                            'line' => $lineNumber + 1,
-                            'pattern' => $mismatch['pattern'],
-                            'replacement' => $mismatch['replacement'],
-                            'reason' => $mismatch['reason'],
-                            'snippet' => trim($line),
-                        ];
-                    }
+                    yield [$fileInfo->getPathname(), $lineNumber + 1, $line];
                 }
             }
         }
-
-        return $matches;
     }
 }

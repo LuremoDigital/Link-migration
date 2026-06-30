@@ -4,3 +4,7 @@ vendor/
 composer.lock
 .DS_Store
 Thumbs.db
+.claude/
+.codex/
+AGENTS.md
+TODOS.md

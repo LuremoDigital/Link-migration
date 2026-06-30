@@ -17,6 +17,7 @@ class MigrateController extends Controller
     public bool $createBackup = false;
     public int $batchSize = 100;
     public bool $applyProjectConfig = true;
+    public bool $acknowledgeMismatches = false;
 
     public function options($actionID): array
     {
@@ -28,6 +29,7 @@ class MigrateController extends Controller
         $options[] = 'createBackup';
         $options[] = 'batchSize';
         $options[] = 'applyProjectConfig';
+        $options[] = 'acknowledgeMismatches';
 
         return $options;
     }
@@ -62,13 +64,6 @@ class MigrateController extends Controller
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        try {
-            HyperToLink::$plugin->getLicense()->requireWriteAccess($this->dryRun);
-        } catch (\Throwable $e) {
-            $this->stderr($e->getMessage() . "\n", Console::FG_RED);
-            return ExitCode::UNSPECIFIED_ERROR;
-        }
-
         [, $exitCode] = $this->runFieldStage();
         return $exitCode;
     }
@@ -77,13 +72,6 @@ class MigrateController extends Controller
     {
         if (!$this->dryRun && !$this->force) {
             $this->stderr("Refusing to write content without --force.\n", Console::FG_RED);
-            return ExitCode::UNSPECIFIED_ERROR;
-        }
-
-        try {
-            HyperToLink::$plugin->getLicense()->requireWriteAccess($this->dryRun);
-        } catch (\Throwable $e) {
-            $this->stderr($e->getMessage() . "\n", Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
@@ -104,7 +92,6 @@ class MigrateController extends Controller
     {
         $plugin = HyperToLink::$plugin;
         $audit = $plugin->getAudit()->buildAudit($this->field);
-        $plugin->getState()->syncAuditedFields($audit);
 
         $statuses = $plugin->getState()->workflowStatuses($audit, $this->field);
         foreach ($statuses as $status) {
@@ -135,18 +122,23 @@ class MigrateController extends Controller
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        try {
-            HyperToLink::$plugin->getLicense()->requireWriteAccess($this->dryRun);
-        } catch (\Throwable $e) {
-            $this->stderr($e->getMessage() . "\n", Console::FG_RED);
+        $plugin = HyperToLink::$plugin;
+        $report = $plugin->getReport()->beginRun('finalize');
+        $audit = $plugin->getAudit()->buildAudit($this->field);
+        $plugin->getReport()->writePreflight($report, $audit, $this, 'finalize cutover');
+
+        // Layout cutover leaves templates referencing Hyper-only APIs broken. Refuse to finalize
+        // while unreviewed template mismatches exist unless the operator explicitly acknowledges
+        // them (finding 9). Dry runs are exempt so the impact can still be previewed.
+        $mismatchCount = count($audit->mismatchReferences);
+        if (!$this->dryRun && $mismatchCount > 0 && !$this->acknowledgeMismatches) {
+            $this->stderr(sprintf(
+                "Refusing to finalize: %d unreviewed template mismatch(es) found. "
+                . "Review `link-migrator/migrate/mismatches`, then re-run with --acknowledge-mismatches=1.\n",
+                $mismatchCount
+            ), Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
         }
-
-        $plugin = HyperToLink::$plugin;
-        $report = $plugin->getReport()->beginRun('finalize', $this->dryRun, $this->verbose);
-        $audit = $plugin->getAudit()->buildAudit($this->field);
-        $plugin->getState()->syncAuditedFields($audit);
-        $plugin->getReport()->writePreflight($report, $audit, $this, 'finalize cutover');
 
         $result = $plugin->getCutover()->finalize($audit, [
             'field' => $this->field,
@@ -185,7 +177,7 @@ class MigrateController extends Controller
     public function actionMismatches(): int
     {
         $plugin = HyperToLink::$plugin;
-        $report = $plugin->getReport()->beginRun('mismatches', true, $this->verbose);
+        $report = $plugin->getReport()->beginRun('mismatches');
         $audit = $plugin->getAudit()->buildAudit($this->field);
 
         $payload = [
@@ -220,9 +212,8 @@ class MigrateController extends Controller
     private function runAuditStage(): array
     {
         $plugin = HyperToLink::$plugin;
-        $report = $plugin->getReport()->beginRun('audit', $this->dryRun, $this->verbose);
+        $report = $plugin->getReport()->beginRun('audit');
         $audit = $plugin->getAudit()->buildAudit($this->field);
-        $plugin->getState()->syncAuditedFields($audit);
         $plugin->getReport()->writeAudit($report, $audit, $this);
         $this->stdout("Audit written to {$report->reportPath}\n", Console::FG_GREEN);
 
@@ -233,8 +224,7 @@ class MigrateController extends Controller
     {
         $plugin = HyperToLink::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
-        $plugin->getState()->syncAuditedFields($audit);
-        $report = $plugin->getReport()->beginRun('prepare-fields', $this->dryRun, $this->verbose);
+        $report = $plugin->getReport()->beginRun('prepare-fields');
         $plugin->getReport()->writePreflight($report, $audit, $this, 'prepare native fields');
 
         $result = $plugin->getFieldMigration()->migrate($audit, [
@@ -254,8 +244,7 @@ class MigrateController extends Controller
     {
         $plugin = HyperToLink::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
-        $plugin->getState()->syncAuditedFields($audit);
-        $report = $plugin->getReport()->beginRun('content', $this->dryRun, $this->verbose);
+        $report = $plugin->getReport()->beginRun('content');
         $plugin->getReport()->writePreflight($report, $audit, $this, 'content migration');
 
         $result = $plugin->getContentMigration()->migrate($audit, [

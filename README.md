@@ -23,6 +23,12 @@ This plugin is independent and unaffiliated. Verbb Hyper is a plugin by Verbb.
 - Verbb Hyper must remain installed until prepare, content migration, and finalize are complete
 - Recommended: Craft 5.6+ if you want the fuller native Link advanced field set
 
+## Pricing and Licensing
+
+Link Migrator is a single paid Craft plugin: `$5` for the complete migration workflow. There is no Lite/Pro split and no feature-limited edition; the purchase includes audit, prepare, content migration, backups, template impact review, status reporting, and finalize.
+
+All migration features are included in the one license. Write actions still require explicit operator confirmation via `--force=1`; that confirmation flag is a safety guard, not a pricing gate.
+
 ## Installation
 
 Once published, you will be able to install Link Migrator from Craft's in-app Plugin Store or via Composer.
@@ -56,6 +62,7 @@ Notes:
 - `prepare-fields` creates new native Link fields and records source-to-target mappings.
 - `content` writes only into prepared native target fields and leaves Hyper values untouched.
 - `finalize` updates field layouts; it does not delete Hyper fields in v1.
+- If the mismatch scan found template/module references, `finalize --force=1` refuses to run until you review them and pass `--acknowledge-mismatches=1`.
 
 ## Manual Workflow
 
@@ -102,8 +109,10 @@ Important:
 
 - non-dry runs require `--force=1`
 - unsupported fields are skipped
-- this changes field configuration, not content
-- source Hyper fields remain intact
+- this changes field configuration **and field layouts**: the new native Link field is inserted next to its source Hyper field in every layout that uses the source field, so editors and content migration can populate it before cutover
+- the layout insertion is idempotent — re-running prepare will not add duplicate native fields
+- no content is changed
+- source Hyper fields remain intact (in both fields and layouts) until `finalize`
 
 ### `link-migrator/migrate/content`
 
@@ -130,6 +139,8 @@ Important:
 
 - non-dry runs require `--force=1`
 - requires `prepare-fields` and `content` to have completed first
+- if `migrate/mismatches` reported any template/module references, finalize refuses to run until you review them and re-run with `--acknowledge-mismatches=1`
+- recomputes reconciliation from live content and refuses cutover unless every non-empty source value is verified on the native field (the stored phase is not trusted)
 - does not delete Hyper fields in v1
 
 ### `link-migrator/migrate/mismatches`
@@ -204,23 +215,6 @@ Unsupported cases:
 
 Unsupported values are skipped and reported. They are not silently coerced.
 
-## Editions
-
-`Lite` allows:
-
-- audit
-- mismatch scanning
-- dry-run workflows
-- status reporting
-- CP wizard visibility
-
-`Pro` unlocks:
-
-- preparing native fields
-- content writes
-- backups
-- finalize cutover
-
 ## What Gets Persisted
 
 ### Reports
@@ -254,7 +248,7 @@ The plugin now exposes a CP section with a staged wizard:
 4. Template Impact Review
 5. Finalize
 
-Lite/trial users can inspect the workflow, but write actions are disabled until the plugin is running in the `Pro` edition with a valid Craft plugin license state.
+All steps are included in the single `$5` plugin license. Write actions still require explicit confirmation: each CLI write command refuses to run without `--force=1`.
 
 ### Migration state
 

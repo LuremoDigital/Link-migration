@@ -13,7 +13,7 @@ use lm2k\hypertolink\models\MigrationReport;
 
 class ReportService extends Component
 {
-    public function beginRun(string $action, bool $dryRun, bool $verbose): MigrationReport
+    public function beginRun(string $action): MigrationReport
     {
         $runId = gmdate('Ymd-His') . '-' . bin2hex(random_bytes(4));
         $baseDir = Craft::getAlias('@storage/runtime/link-migrator');
@@ -24,8 +24,6 @@ class ReportService extends Component
         return new MigrationReport([
             'runId' => $runId,
             'action' => $action,
-            'dryRun' => $dryRun,
-            'verbose' => $verbose,
             'reportPath' => $baseDir . DIRECTORY_SEPARATOR . $runId . '-' . $action . '.log',
             'jsonPath' => $baseDir . DIRECTORY_SEPARATOR . $runId . '-' . $action . '.json',
         ]);
@@ -34,11 +32,7 @@ class ReportService extends Component
     public function writeAudit(MigrationReport $report, AuditResult $audit, Controller $controller): void
     {
         $payload = [
-            'summary' => [
-                'fields' => count($audit->fields),
-                'supported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'supported')),
-                'partial' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'partial')),
-                'unsupported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'unsupported')),
+            'summary' => $this->statusCounts($audit) + [
                 'references' => count($audit->codeReferences),
                 'mismatches' => count($audit->mismatchReferences),
             ],
@@ -66,12 +60,7 @@ class ReportService extends Component
 
     public function writePreflight(MigrationReport $report, AuditResult $audit, Controller $controller, string $label): void
     {
-        $summary = [
-            'fields' => count($audit->fields),
-            'supported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'supported')),
-            'partial' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'partial')),
-            'unsupported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'unsupported')),
-        ];
+        $summary = $this->statusCounts($audit);
 
         $controller->stdout(strtoupper($label) . "\n");
         $controller->stdout($this->renderSummary($summary));
@@ -146,6 +135,16 @@ class ReportService extends Component
 
         $this->persist($report, $payload);
         $controller->stdout($this->renderSummary($payload['summary']));
+    }
+
+    private function statusCounts(AuditResult $audit): array
+    {
+        return [
+            'fields' => count($audit->fields),
+            'supported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'supported')),
+            'partial' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'partial')),
+            'unsupported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'unsupported')),
+        ];
     }
 
     private function persist(MigrationReport $report, array $payload): void
