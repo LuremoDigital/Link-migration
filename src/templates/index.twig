@@ -4,6 +4,7 @@
 
 {% set mismatchCount = audit.mismatchReferences|length %}
 {% set totalFields = statuses|length %}
+{% set migratableCount = statuses|filter(s => s.mappingStatus != 'unsupported')|length %}
 {% set preparedCount = statuses|filter(s => s.phase != 'audited')|length %}
 {% set readyCount = statuses|filter(s => s.phase in ['readyToFinalize', 'finalized'])|length %}
 {% set finalizedCount = statuses|filter(s => s.phase == 'finalized')|length %}
@@ -55,11 +56,11 @@
 
       <div class="pane">
         <h3>2. {{ 'Prepare native fields'|t('link-migrator') }}
-          {% if preparedCount == totalFields %}<span class="status green"></span>{% endif %}
+          {% if migratableCount > 0 and preparedCount == migratableCount %}<span class="status green"></span>{% endif %}
         </h3>
         <p>
           {{ 'Creates a native Link field for every supported Hyper field and inserts it next to the source field in each layout. No content is changed, and re-running is safe (idempotent).'|t('link-migrator') }}
-          <strong>{{ '{prepared} of {total} prepared.'|t('link-migrator', { prepared: preparedCount, total: totalFields }) }}</strong>
+          <strong>{{ '{prepared} of {total} prepared.'|t('link-migrator', { prepared: preparedCount, total: migratableCount }) }}</strong>
         </p>
         <form method="post" onsubmit="return confirm({{ 'This will create native Link fields and add them to your field layouts. Continue?'|t('link-migrator')|json_encode|raw }});">
           {{ csrfInput() }}
@@ -70,11 +71,11 @@
 
       <div class="pane">
         <h3>3. {{ 'Migrate content'|t('link-migrator') }}
-          {% if totalFields > 0 and readyCount == totalFields %}<span class="status green"></span>{% endif %}
+          {% if migratableCount > 0 and readyCount == migratableCount %}<span class="status green"></span>{% endif %}
         </h3>
         <p>
           {{ 'Copies every Hyper value into its prepared native field and verifies the saved result. Hyper values are left untouched, per-element backups are written first, and re-running only picks up missing or changed values.'|t('link-migrator') }}
-          <strong>{{ '{ready} of {total} verified and ready to finalize.'|t('link-migrator', { ready: readyCount, total: totalFields }) }}</strong>
+          <strong>{{ '{ready} of {total} verified and ready to finalize.'|t('link-migrator', { ready: readyCount, total: migratableCount }) }}</strong>
         </p>
         <form method="post" onsubmit="return confirm({{ 'This will write native Link content for all prepared fields (with backups). Continue?'|t('link-migrator')|json_encode|raw }});">
           {{ csrfInput() }}
@@ -106,7 +107,7 @@
 
       <div class="pane">
         <h3>5. {{ 'Finalize'|t('link-migrator') }}
-          {% if totalFields > 0 and finalizedCount == totalFields %}<span class="status green"></span>{% endif %}
+          {% if migratableCount > 0 and finalizedCount == migratableCount %}<span class="status green"></span>{% endif %}
         </h3>
         <p>
           {{ 'Removes the Hyper fields from all field layouts, leaving the native Link fields in place. Before cutting over, every value is re-verified against live content (presence and link type) — finalize refuses if anything is unverified. Hyper fields themselves are not deleted.'|t('link-migrator') }}

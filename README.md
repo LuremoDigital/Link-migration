@@ -76,7 +76,7 @@ php craft plugin/install link-migrator
 
 ## Quick Start
 
-Dry-run everything first, then run each stage for real:
+Scan first, then dry-run and run each write stage for real:
 
 ```bash
 php craft link-migrator/migrate/audit
