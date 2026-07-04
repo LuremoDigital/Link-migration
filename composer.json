@@ -1,5 +1,5 @@
 {
-  "name": "lm2k/craft-link-migrator",
+  "name": "luremo/craft-link-migrator",
   "description": "Staged migration plugin for moving Verbb Hyper fields and content to Craft's native Link field with audit, prepare, content, and finalize workflows.",
   "type": "craft-plugin",
   "keywords": [
@@ -13,16 +13,16 @@
   "license": "proprietary",
   "authors": [
     {
-      "name": "Luuk",
-      "homepage": "https://github.com/LuukRM2000"
+      "name": "Luremo",
+      "homepage": "https://github.com/LuremoDigital"
     }
   ],
-  "homepage": "https://github.com/LuukRM2000/hyper-to-native-migration",
+  "homepage": "https://github.com/LuremoDigital/Link-migration",
   "support": {
-    "issues": "https://github.com/LuukRM2000/hyper-to-native-migration/issues",
-    "source": "https://github.com/LuukRM2000/hyper-to-native-migration",
-    "docs": "https://github.com/LuukRM2000/hyper-to-native-migration/blob/main/README.md",
-    "rss": "https://github.com/LuukRM2000/hyper-to-native-migration/commits/main.atom"
+    "issues": "https://github.com/LuremoDigital/Link-migration/issues",
+    "source": "https://github.com/LuremoDigital/Link-migration",
+    "docs": "https://github.com/LuremoDigital/Link-migration/blob/main/README.md",
+    "rss": "https://github.com/LuremoDigital/Link-migration/commits/main.atom"
   },
   "require": {
     "php": "^8.2",
@@ -30,18 +30,18 @@
   },
   "autoload": {
     "psr-4": {
-      "lm2k\\hypertolink\\": "src/"
+      "luremo\\linkmigrator\\": "src/"
     }
   },
   "extra": {
     "name": "Link Migrator",
     "handle": "link-migrator",
     "description": "Staged migration plugin for moving Verbb Hyper fields and content to Craft's native Link field safely.",
-    "class": "lm2k\\hypertolink\\HyperToLink",
-    "schemaVersion": "1.1.0",
-    "developer": "Luuk",
-    "developerUrl": "https://github.com/LuukRM2000",
-    "documentationUrl": "https://github.com/LuukRM2000/hyper-to-native-migration/blob/main/README.md",
-    "changelogUrl": "https://raw.githubusercontent.com/LuukRM2000/hyper-to-native-migration/main/CHANGELOG.md"
+    "class": "luremo\\linkmigrator\\LinkMigrator",
+    "schemaVersion": "1.2.0",
+    "developer": "Luremo",
+    "developerUrl": "https://github.com/LuremoDigital",
+    "documentationUrl": "https://github.com/LuremoDigital/Link-migration/blob/main/README.md",
+    "changelogUrl": "https://raw.githubusercontent.com/LuremoDigital/Link-migration/main/CHANGELOG.md"
   }
 }

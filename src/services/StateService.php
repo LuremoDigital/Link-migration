@@ -1,15 +1,15 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
 use craft\base\ElementInterface;
 use craft\helpers\Db;
-use lm2k\hypertolink\models\AuditResult;
-use lm2k\hypertolink\models\FieldMapping;
-use lm2k\hypertolink\records\FieldMappingRecord;
-use lm2k\hypertolink\records\MigrationRecord;
+use luremo\linkmigrator\models\AuditResult;
+use luremo\linkmigrator\models\FieldMapping;
+use luremo\linkmigrator\records\FieldMappingRecord;
+use luremo\linkmigrator\records\MigrationRecord;
 
 class StateService extends Component
 {

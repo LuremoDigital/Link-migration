@@ -1,14 +1,14 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
 use craft\fields\Link;
-use lm2k\hypertolink\HyperToLink;
-use lm2k\hypertolink\models\AuditResult;
-use lm2k\hypertolink\models\FieldAudit;
-use lm2k\hypertolink\models\MappingDecision;
+use luremo\linkmigrator\LinkMigrator;
+use luremo\linkmigrator\models\AuditResult;
+use luremo\linkmigrator\models\FieldAudit;
+use luremo\linkmigrator\models\MappingDecision;
 
 class AuditService extends Component
 {
@@ -97,7 +97,7 @@ class AuditService extends Component
                 'rawSettings' => $settings,
             ]);
 
-            $audit->mapping = HyperToLink::$plugin
+            $audit->mapping = LinkMigrator::$plugin
                 ->getMappingStrategy()
                 ->decide($settings, $linkTypes, $multi, $fieldLayouts);
             $audit->warnings = $audit->mapping->warnings;

@@ -1,19 +1,19 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
 use craft\console\Controller;
-use lm2k\hypertolink\models\AuditResult;
-use lm2k\hypertolink\models\ContentMigrationResult;
-use lm2k\hypertolink\models\CutoverResult;
-use lm2k\hypertolink\models\FieldMigrationResult;
-use lm2k\hypertolink\models\MigrationReport;
+use luremo\linkmigrator\models\AuditResult;
+use luremo\linkmigrator\models\ContentMigrationResult;
+use luremo\linkmigrator\models\CutoverResult;
+use luremo\linkmigrator\models\FieldMigrationResult;
+use luremo\linkmigrator\models\MigrationReport;
 
 class ReportService extends Component
 {
-    public function beginRun(string $action): MigrationReport
+    public function beginRun(string $action, bool $dryRun = false): MigrationReport
     {
         $runId = gmdate('Ymd-His') . '-' . bin2hex(random_bytes(4));
         $baseDir = Craft::getAlias('@storage/runtime/link-migrator');
@@ -24,12 +24,13 @@ class ReportService extends Component
         return new MigrationReport([
             'runId' => $runId,
             'action' => $action,
+            'dryRun' => $dryRun,
             'reportPath' => $baseDir . DIRECTORY_SEPARATOR . $runId . '-' . $action . '.log',
             'jsonPath' => $baseDir . DIRECTORY_SEPARATOR . $runId . '-' . $action . '.json',
         ]);
     }
 
-    public function writeAudit(MigrationReport $report, AuditResult $audit, Controller $controller): void
+    public function writeAudit(MigrationReport $report, AuditResult $audit, ?Controller $controller = null): void
     {
         $payload = [
             'summary' => $this->statusCounts($audit) + [
@@ -55,11 +56,15 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller->stdout($this->renderSummary($payload['summary']));
+        $controller?->stdout($this->renderSummary($payload['summary']));
     }
 
-    public function writePreflight(MigrationReport $report, AuditResult $audit, Controller $controller, string $label): void
+    public function writePreflight(MigrationReport $report, AuditResult $audit, ?Controller $controller, string $label): void
     {
+        if ($controller === null) {
+            return;
+        }
+
         $summary = $this->statusCounts($audit);
 
         $controller->stdout(strtoupper($label) . "\n");
@@ -71,7 +76,7 @@ class ReportService extends Component
         $controller->stdout("- Finalize only updates field layouts; v1 does not delete Hyper fields automatically.\n\n");
     }
 
-    public function writeFieldResult(MigrationReport $report, FieldMigrationResult $result, Controller $controller): void
+    public function writeFieldResult(MigrationReport $report, FieldMigrationResult $result, ?Controller $controller = null): void
     {
         $payload = [
             'summary' => [
@@ -88,10 +93,10 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller->stdout($this->renderSummary($payload['summary']));
+        $controller?->stdout($this->renderSummary($payload['summary']));
     }
 
-    public function writeContentResult(MigrationReport $report, ContentMigrationResult $result, Controller $controller): void
+    public function writeContentResult(MigrationReport $report, ContentMigrationResult $result, ?Controller $controller = null): void
     {
         $payload = [
             'summary' => [
@@ -117,10 +122,22 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller->stdout($this->renderSummary($payload['summary']));
+        $controller?->stdout($this->renderSummary($payload['summary']));
     }
 
-    public function writeCutoverResult(MigrationReport $report, CutoverResult $result, Controller $controller): void
+    public function writeMismatches(MigrationReport $report, AuditResult $audit): void
+    {
+        $payload = [
+            'summary' => [
+                'mismatches' => count($audit->mismatchReferences),
+            ],
+            'mismatches' => $audit->mismatchReferences,
+        ];
+
+        $this->persist($report, $payload);
+    }
+
+    public function writeCutoverResult(MigrationReport $report, CutoverResult $result, ?Controller $controller = null): void
     {
         $payload = [
             'summary' => [
@@ -134,7 +151,7 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller->stdout($this->renderSummary($payload['summary']));
+        $controller?->stdout($this->renderSummary($payload['summary']));
     }
 
     private function statusCounts(AuditResult $audit): array
@@ -149,6 +166,14 @@ class ReportService extends Component
 
     private function persist(MigrationReport $report, array $payload): void
     {
+        $payload = [
+            'run' => [
+                'runId' => $report->runId,
+                'action' => $report->action,
+                'dryRun' => $report->dryRun,
+            ],
+        ] + $payload;
+
         file_put_contents($report->jsonPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
         file_put_contents($report->reportPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
     }

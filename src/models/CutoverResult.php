@@ -1,6 +1,6 @@
 <?php
 
-namespace lm2k\hypertolink\models;
+namespace luremo\linkmigrator\models;
 
 use yii\base\Model;
 

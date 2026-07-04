@@ -1,6 +1,6 @@
 <?php
 
-namespace lm2k\hypertolink\migrations;
+namespace luremo\linkmigrator\migrations;
 
 use craft\db\Migration;
 use craft\db\Query;
@@ -53,18 +53,26 @@ class m260630_000000_migration_source_field_uid extends Migration
     {
         $table = '{{%linkmigrator_migrations}}';
 
+        $this->dropUniqueIndexOn($table, ['action', 'sourceFieldUid', 'ownerId', 'siteId']);
+
         if ($this->db->columnExists($table, 'sourceFieldUid')) {
             $this->dropColumn($table, 'sourceFieldUid');
         }
+
+        $this->createIndex(null, $table, ['action', 'fieldHandle', 'ownerId', 'siteId'], true);
 
         return true;
     }
 
     private function dropHandleUniqueIndex(string $table): void
     {
+        $this->dropUniqueIndexOn($table, ['action', 'fieldHandle', 'ownerId', 'siteId']);
+    }
+
+    private function dropUniqueIndexOn(string $table, array $target): void
+    {
         $schema = $this->db->getSchema();
         $rawTableName = $schema->getRawTableName($table);
-        $target = ['action', 'fieldHandle', 'ownerId', 'siteId'];
 
         foreach ($schema->getTableIndexes($rawTableName) as $index) {
             if (!$index->isUnique || $index->isPrimary) {

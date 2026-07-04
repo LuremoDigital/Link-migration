@@ -1,9 +1,9 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use craft\base\Component;
-use lm2k\hypertolink\models\MappingDecision;
+use luremo\linkmigrator\models\MappingDecision;
 
 class MappingStrategyService extends Component
 {

@@ -1,15 +1,15 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
 use craft\fieldlayoutelements\CustomField;
-use lm2k\hypertolink\HyperToLink;
-use lm2k\hypertolink\models\AuditResult;
-use lm2k\hypertolink\models\CutoverResult;
-use lm2k\hypertolink\models\FieldMapping;
-use lm2k\hypertolink\models\MappingDecision;
+use luremo\linkmigrator\LinkMigrator;
+use luremo\linkmigrator\models\AuditResult;
+use luremo\linkmigrator\models\CutoverResult;
+use luremo\linkmigrator\models\FieldMapping;
+use luremo\linkmigrator\models\MappingDecision;
 
 class CutoverService extends Component
 {
@@ -28,7 +28,7 @@ class CutoverService extends Component
             }
 
             try {
-                $mapping = HyperToLink::$plugin->getState()->getFieldMapping($fieldAudit->uid);
+                $mapping = LinkMigrator::$plugin->getState()->getFieldMapping($fieldAudit->uid);
                 if (!$mapping instanceof FieldMapping || !$mapping->targetHandle) {
                     throw new \RuntimeException('Field has not been prepared.');
                 }
@@ -41,7 +41,7 @@ class CutoverService extends Component
 
                 // Recompute reconciliation fresh. The stored workflow phase is not trusted:
                 // every non-empty source value must have a verified native value before cutover.
-                $reconciliation = HyperToLink::$plugin->getContentMigration()
+                $reconciliation = LinkMigrator::$plugin->getContentMigration()
                     ->reconcileField($fieldAudit, $mapping->targetHandle);
 
                 if ($reconciliation['unverified'] !== []) {
@@ -71,7 +71,7 @@ class CutoverService extends Component
                 }
 
                 $this->replaceFieldInLayouts($sourceField, $targetField);
-                HyperToLink::$plugin->getState()->markFinalized($fieldAudit->uid);
+                LinkMigrator::$plugin->getState()->markFinalized($fieldAudit->uid);
 
                 $result->finalized[] = [
                     'field' => $fieldAudit->handle,
