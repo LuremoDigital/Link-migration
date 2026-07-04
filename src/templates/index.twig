@@ -109,7 +109,7 @@
           {% if totalFields > 0 and finalizedCount == totalFields %}<span class="status green"></span>{% endif %}
         </h3>
         <p>
-          {{ 'Removes the Hyper fields from all field layouts, leaving the native Link fields in place. Before cutting over, every value is re-verified against live content — finalize refuses if anything is unverified. Hyper fields themselves are not deleted.'|t('link-migrator') }}
+          {{ 'Removes the Hyper fields from all field layouts, leaving the native Link fields in place. Before cutting over, every value is re-verified against live content (presence and link type) — finalize refuses if anything is unverified. Hyper fields themselves are not deleted.'|t('link-migrator') }}
         </p>
         <form method="post" onsubmit="return confirm({{ 'This will remove Hyper fields from your field layouts. Make sure your templates are updated. Continue?'|t('link-migrator')|json_encode }});">
           {{ csrfInput() }}

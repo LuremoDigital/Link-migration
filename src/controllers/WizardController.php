@@ -39,11 +39,13 @@ class WizardController extends Controller
         $plugin = LinkMigrator::$plugin;
 
         try {
+            $report = $plugin->getReport()->beginRun('prepare-fields');
             $audit = $plugin->getAudit()->buildAudit();
             $result = $plugin->getFieldMigration()->migrate($audit, ['dryRun' => false, 'force' => true]);
+            $plugin->getReport()->writeFieldResult($report, $result);
 
             if ($result->hasErrors()) {
-                $this->setFailFlash('Prepare completed with errors. Check the CLI reports for details.');
+                $this->setFailFlash("Prepare completed with errors. See the run report: {$report->reportPath}");
             } else {
                 $this->setSuccessFlash('Native Link fields prepared successfully.');
             }
@@ -60,6 +62,7 @@ class WizardController extends Controller
         $plugin = LinkMigrator::$plugin;
 
         try {
+            $report = $plugin->getReport()->beginRun('content');
             $audit = $plugin->getAudit()->buildAudit();
             $result = $plugin->getContentMigration()->migrate($audit, [
                 'dryRun' => false,
@@ -67,9 +70,10 @@ class WizardController extends Controller
                 'createBackup' => true,
                 'batchSize' => 100,
             ]);
+            $plugin->getReport()->writeContentResult($report, $result);
 
             if ($result->hasErrors()) {
-                $this->setFailFlash('Content migration completed with errors. Check the CLI reports for details.');
+                $this->setFailFlash("Content migration completed with errors. See the run report: {$report->reportPath}");
             } else {
                 $this->setSuccessFlash('Content migration completed successfully.');
             }
@@ -100,10 +104,12 @@ class WizardController extends Controller
                 return $this->redirect(LinkMigrator::HANDLE);
             }
 
+            $report = $plugin->getReport()->beginRun('finalize');
             $result = $plugin->getCutover()->finalize($audit, ['dryRun' => false, 'force' => true]);
+            $plugin->getReport()->writeCutoverResult($report, $result);
 
             if ($result->hasErrors()) {
-                $this->setFailFlash('Finalize completed with errors. Check the CLI reports for details.');
+                $this->setFailFlash("Finalize completed with errors. See the run report: {$report->reportPath}");
             } else {
                 $this->setSuccessFlash('Field layout cutover completed successfully.');
             }

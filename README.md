@@ -33,11 +33,13 @@ Built for Craft teams retiring a plugin dependency without risking content or a 
 
 Hyper fields and their values are never deleted — keep Hyper installed until your templates are updated and reports are clean.
 
+Re-verification covers presence and link type. A Hyper value edited to a *different value of the same type* after content migration is not detected automatically — clear the native field for that element and re-run `content` to re-migrate it. Type changes and cleared native values are picked up by a re-run automatically.
+
 ## Features
 
 - 🧭 **Control Panel wizard** — run the five steps from a guided CP screen with live per-field status.
 - 🖥 **Full CLI workflow** — every step is a console command with `--dry-run=1` support; writes always require an explicit `--force=1`.
-- ✅ **Verified, not assumed** — content readiness and finalize are gated by fresh reconciliation of live values, never by stored state.
+- ✅ **Verified, not assumed** — content readiness and finalize are gated by fresh re-verification of live content (presence and link type of every non-empty value), never by stored state.
 - 💾 **Backups & reports** — optional per-element backup payloads, plus a JSON and log report for every run.
 - ♻️ **Resumable & idempotent** — re-running skips verified values and recovers missing or drifted ones.
 - 🔍 **Template mismatch scanner** — flags Hyper-only API usage in templates, modules, and config; exits non-zero for CI.

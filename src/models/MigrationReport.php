@@ -8,6 +8,7 @@ class MigrationReport extends Model
 {
     public string $runId;
     public string $action;
+    public bool $dryRun = false;
     public string $reportPath;
     public string $jsonPath;
 }

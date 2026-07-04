@@ -108,7 +108,7 @@ class MigrateController extends Controller
         }
 
         $plugin = LinkMigrator::$plugin;
-        $report = $plugin->getReport()->beginRun('finalize');
+        $report = $plugin->getReport()->beginRun('finalize', $this->dryRun);
         $audit = $plugin->getAudit()->buildAudit($this->field);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'finalize cutover');
 
@@ -209,7 +209,7 @@ class MigrateController extends Controller
     {
         $plugin = LinkMigrator::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
-        $report = $plugin->getReport()->beginRun('prepare-fields');
+        $report = $plugin->getReport()->beginRun('prepare-fields', $this->dryRun);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'prepare native fields');
 
         $result = $plugin->getFieldMigration()->migrate($audit, [
@@ -229,7 +229,7 @@ class MigrateController extends Controller
     {
         $plugin = LinkMigrator::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
-        $report = $plugin->getReport()->beginRun('content');
+        $report = $plugin->getReport()->beginRun('content', $this->dryRun);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'content migration');
 
         $result = $plugin->getContentMigration()->migrate($audit, [
