@@ -43,12 +43,12 @@ class WizardController extends Controller
             $result = $plugin->getFieldMigration()->migrate($audit, ['dryRun' => false, 'force' => true]);
 
             if ($result->hasErrors()) {
-                Craft::$app->getSession()->setFlash('error', 'Prepare completed with errors. Check the CLI reports for details.');
+                $this->setFailFlash('Prepare completed with errors. Check the CLI reports for details.');
             } else {
-                Craft::$app->getSession()->setFlash('notice', 'Native Link fields prepared successfully.');
+                $this->setSuccessFlash('Native Link fields prepared successfully.');
             }
         } catch (\Throwable $e) {
-            Craft::$app->getSession()->setFlash('error', $e->getMessage());
+            $this->setFailFlash($e->getMessage());
         }
 
         return $this->redirect(LinkMigrator::HANDLE);
@@ -69,12 +69,12 @@ class WizardController extends Controller
             ]);
 
             if ($result->hasErrors()) {
-                Craft::$app->getSession()->setFlash('error', 'Content migration completed with errors. Check the CLI reports for details.');
+                $this->setFailFlash('Content migration completed with errors. Check the CLI reports for details.');
             } else {
-                Craft::$app->getSession()->setFlash('notice', 'Content migration completed successfully.');
+                $this->setSuccessFlash('Content migration completed successfully.');
             }
         } catch (\Throwable $e) {
-            Craft::$app->getSession()->setFlash('error', $e->getMessage());
+            $this->setFailFlash($e->getMessage());
         }
 
         return $this->redirect(LinkMigrator::HANDLE);
@@ -93,7 +93,7 @@ class WizardController extends Controller
             $mismatchCount = count($audit->mismatchReferences);
             $acknowledged = (bool)Craft::$app->getRequest()->getBodyParam('acknowledgeMismatches');
             if ($mismatchCount > 0 && !$acknowledged) {
-                Craft::$app->getSession()->setFlash('error', sprintf(
+                $this->setFailFlash(sprintf(
                     '%d unreviewed template mismatch(es) found. Review them and confirm before finalizing.',
                     $mismatchCount
                 ));
@@ -103,12 +103,12 @@ class WizardController extends Controller
             $result = $plugin->getCutover()->finalize($audit, ['dryRun' => false, 'force' => true]);
 
             if ($result->hasErrors()) {
-                Craft::$app->getSession()->setFlash('error', 'Finalize completed with errors. Check the CLI reports for details.');
+                $this->setFailFlash('Finalize completed with errors. Check the CLI reports for details.');
             } else {
-                Craft::$app->getSession()->setFlash('notice', 'Field layout cutover completed successfully.');
+                $this->setSuccessFlash('Field layout cutover completed successfully.');
             }
         } catch (\Throwable $e) {
-            Craft::$app->getSession()->setFlash('error', $e->getMessage());
+            $this->setFailFlash($e->getMessage());
         }
 
         return $this->redirect(LinkMigrator::HANDLE);

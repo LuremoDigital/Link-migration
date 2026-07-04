@@ -135,4 +135,9 @@ Commercial license — see [LICENSE.md](LICENSE.md).
 - **Bug reports & migration edge cases:** [GitHub Issues](https://github.com/LuremoDigital/Link-migration/issues) (please include reproduction steps).
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 
+## Screenshots
+
+<p align="center"><img src="docs/img/cp-wizard.png" alt="Control Panel wizard" width="800"></p>
+<p align="center"><em>The staged wizard — audit, prepare, migrate, review, finalize, with live per-field status.</em></p>
+
 <p align="center">Built by <a href="https://github.com/LuremoDigital">Luremo</a> for the Craft CMS community.</p>
