@@ -119,6 +119,10 @@ class FieldMigrationService extends Component
 
     private function buildLinkFieldConfig(object $existingField, MappingDecision $mapping, string $targetHandle): Link
     {
+        if ($mapping->craftLinkTypes === []) {
+            throw new \RuntimeException('Cannot create a native Link field without allowed link types.');
+        }
+
         $config = [
             'name' => $existingField->name,
             'handle' => $targetHandle,

@@ -22,4 +22,22 @@ class FieldMapping extends Model
     public ?string $preparedAt = null;
     public ?string $contentMigratedAt = null;
     public ?string $finalizedAt = null;
+
+    public function isPrepared(): bool
+    {
+        return in_array($this->phase, [
+            self::PHASE_PREPARED,
+            self::PHASE_CONTENT_MIGRATED,
+            self::PHASE_READY_TO_FINALIZE,
+            self::PHASE_FINALIZED,
+        ], true);
+    }
+
+    public function isContentReady(): bool
+    {
+        return in_array($this->phase, [
+            self::PHASE_READY_TO_FINALIZE,
+            self::PHASE_FINALIZED,
+        ], true);
+    }
 }

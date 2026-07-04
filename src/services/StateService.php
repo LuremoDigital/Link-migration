@@ -15,9 +15,6 @@ class StateService extends Component
 {
     public function getFieldMapping(string $sourceFieldUid): ?FieldMapping
     {
-        // Resolve by the stable source field UID, not the reusable handle, so a deleted and
-        // recreated field with the same handle cannot inherit the old field's mapping/phase
-        // (finding 6).
         $record = FieldMappingRecord::find()
             ->where(['sourceFieldUid' => $sourceFieldUid])
             ->orderBy([
@@ -161,20 +158,26 @@ class StateService extends Component
     public function writeBackup(string $action, string $fieldHandle, ElementInterface $element, array $backup): string
     {
         $baseDir = Craft::getAlias('@storage/runtime/link-migrator/backups');
-        if (!is_dir($baseDir)) {
-            mkdir($baseDir, 0775, true);
+        if (!is_dir($baseDir) && !mkdir($baseDir, 0775, true) && !is_dir($baseDir)) {
+            throw new \RuntimeException(sprintf('Could not create backup directory: %s', $baseDir));
         }
 
         $path = sprintf(
-            '%s/%s-%s-%s-%s.json',
+            '%s/%s-%s-%s-%s-%s-%s.json',
             $baseDir,
+            gmdate('Ymd-His'),
+            bin2hex(random_bytes(4)),
             $action,
             $fieldHandle,
             $element->id,
             $element->siteId
         );
 
-        file_put_contents($path, json_encode($backup, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        $json = json_encode($backup, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false || file_put_contents($path, $json . PHP_EOL) === false) {
+            throw new \RuntimeException(sprintf('Could not write backup: %s', $path));
+        }
+
         return $path;
     }
 
@@ -263,7 +266,6 @@ class StateService extends Component
         array $backup,
         ?string $backupPath
     ): void {
-        // Identity is the stable source field UID, not the reusable handle (finding 6).
         $record = MigrationRecord::findOne([
             'action' => $action,
             'sourceFieldUid' => $sourceFieldUid,
@@ -294,15 +296,6 @@ class StateService extends Component
             return true;
         }
 
-        // The only non-authoritative outcome is a "skipped" status, which a re-run records
-        // for units it deliberately leaves alone (e.g. "Already migrated."). It must never
-        // downgrade a confirmed migration. Every other status reflects what the current run
-        // actually observed for this unit, so the latest outcome wins — including a later
-        // warning or error that supersedes an earlier success (finding 7).
-        if ($incomingStatus === 'skipped' && $existingStatus === 'migrated') {
-            return false;
-        }
-
-        return true;
+        return $incomingStatus !== 'skipped' || $existingStatus === 'skipped';
     }
 }

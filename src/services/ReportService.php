@@ -13,27 +13,32 @@ use luremo\linkmigrator\models\MigrationReport;
 
 class ReportService extends Component
 {
-    public function beginRun(string $action, bool $dryRun = false): MigrationReport
+    public function beginRun(string $action, bool $dryRun, bool $verbose): MigrationReport
     {
         $runId = gmdate('Ymd-His') . '-' . bin2hex(random_bytes(4));
         $baseDir = Craft::getAlias('@storage/runtime/link-migrator');
-        if (!is_dir($baseDir)) {
-            mkdir($baseDir, 0775, true);
+        if (!is_dir($baseDir) && !mkdir($baseDir, 0775, true) && !is_dir($baseDir)) {
+            throw new \RuntimeException(sprintf('Could not create report directory: %s', $baseDir));
         }
 
         return new MigrationReport([
             'runId' => $runId,
             'action' => $action,
             'dryRun' => $dryRun,
+            'verbose' => $verbose,
             'reportPath' => $baseDir . DIRECTORY_SEPARATOR . $runId . '-' . $action . '.log',
             'jsonPath' => $baseDir . DIRECTORY_SEPARATOR . $runId . '-' . $action . '.json',
         ]);
     }
 
-    public function writeAudit(MigrationReport $report, AuditResult $audit, ?Controller $controller = null): void
+    public function writeAudit(MigrationReport $report, AuditResult $audit, Controller $controller): void
     {
         $payload = [
-            'summary' => $this->statusCounts($audit) + [
+            'summary' => [
+                'fields' => count($audit->fields),
+                'supported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'supported')),
+                'partial' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'partial')),
+                'unsupported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'unsupported')),
                 'references' => count($audit->codeReferences),
                 'mismatches' => count($audit->mismatchReferences),
             ],
@@ -56,16 +61,22 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller?->stdout($this->renderSummary($payload['summary']));
+        $controller->stdout($this->renderSummary($payload['summary']));
     }
 
-    public function writePreflight(MigrationReport $report, AuditResult $audit, ?Controller $controller, string $label): void
+    public function writePayload(MigrationReport $report, array $payload): void
     {
-        if ($controller === null) {
-            return;
-        }
+        $this->persist($report, $payload);
+    }
 
-        $summary = $this->statusCounts($audit);
+    public function writePreflight(MigrationReport $report, AuditResult $audit, Controller $controller, string $label): void
+    {
+        $summary = [
+            'fields' => count($audit->fields),
+            'supported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'supported')),
+            'partial' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'partial')),
+            'unsupported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'unsupported')),
+        ];
 
         $controller->stdout(strtoupper($label) . "\n");
         $controller->stdout($this->renderSummary($summary));
@@ -76,7 +87,7 @@ class ReportService extends Component
         $controller->stdout("- Finalize only updates field layouts; v1 does not delete Hyper fields automatically.\n\n");
     }
 
-    public function writeFieldResult(MigrationReport $report, FieldMigrationResult $result, ?Controller $controller = null): void
+    public function writeFieldResult(MigrationReport $report, FieldMigrationResult $result, Controller $controller): void
     {
         $payload = [
             'summary' => [
@@ -93,10 +104,10 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller?->stdout($this->renderSummary($payload['summary']));
+        $controller->stdout($this->renderSummary($payload['summary']));
     }
 
-    public function writeContentResult(MigrationReport $report, ContentMigrationResult $result, ?Controller $controller = null): void
+    public function writeContentResult(MigrationReport $report, ContentMigrationResult $result, Controller $controller): void
     {
         $payload = [
             'summary' => [
@@ -122,22 +133,10 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller?->stdout($this->renderSummary($payload['summary']));
+        $controller->stdout($this->renderSummary($payload['summary']));
     }
 
-    public function writeMismatches(MigrationReport $report, AuditResult $audit): void
-    {
-        $payload = [
-            'summary' => [
-                'mismatches' => count($audit->mismatchReferences),
-            ],
-            'mismatches' => $audit->mismatchReferences,
-        ];
-
-        $this->persist($report, $payload);
-    }
-
-    public function writeCutoverResult(MigrationReport $report, CutoverResult $result, ?Controller $controller = null): void
+    public function writeCutoverResult(MigrationReport $report, CutoverResult $result, Controller $controller): void
     {
         $payload = [
             'summary' => [
@@ -151,31 +150,21 @@ class ReportService extends Component
         ];
 
         $this->persist($report, $payload);
-        $controller?->stdout($this->renderSummary($payload['summary']));
-    }
-
-    private function statusCounts(AuditResult $audit): array
-    {
-        return [
-            'fields' => count($audit->fields),
-            'supported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'supported')),
-            'partial' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'partial')),
-            'unsupported' => count(array_filter($audit->fields, fn($field) => $field->mapping->status === 'unsupported')),
-        ];
+        $controller->stdout($this->renderSummary($payload['summary']));
     }
 
     private function persist(MigrationReport $report, array $payload): void
     {
-        $payload = [
-            'run' => [
-                'runId' => $report->runId,
-                'action' => $report->action,
-                'dryRun' => $report->dryRun,
-            ],
-        ] + $payload;
+        $json = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        if ($json === false) {
+            throw new \RuntimeException('Could not encode migration report JSON.');
+        }
 
-        file_put_contents($report->jsonPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
-        file_put_contents($report->reportPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        foreach ([$report->jsonPath, $report->reportPath] as $path) {
+            if (file_put_contents($path, $json . PHP_EOL) === false) {
+                throw new \RuntimeException(sprintf('Could not write migration report: %s', $path));
+            }
+        }
     }
 
     private function renderSummary(array $summary): string

@@ -14,12 +14,11 @@ use luremo\linkmigrator\LinkMigrator;
 use luremo\linkmigrator\models\AuditResult;
 use luremo\linkmigrator\models\ContentMigrationResult;
 use luremo\linkmigrator\models\FieldAudit;
-use luremo\linkmigrator\models\FieldMapping;
 use luremo\linkmigrator\models\MappingDecision;
 
 class ContentMigrationService extends Component
 {
-    private const NATIVE_LINK_TYPES = ['asset', 'category', 'email', 'entry', 'phone', 'sms', 'tel', 'url'];
+    private const NATIVE_LINK_TYPES = ['asset', 'category', 'email', 'entry', 'phone', 'tel', 'url'];
     private array $fieldContextCache = [];
     private array $rawContentCache = [];
     private array $migratedStateCache = [];
@@ -48,7 +47,7 @@ class ContentMigrationService extends Component
                 continue;
             }
 
-            if (!$fieldMapping->targetFieldId || Craft::$app->getFields()->getFieldByHandle($fieldMapping->targetHandle) === null) {
+            if (!$fieldMapping->targetFieldId || $this->findFieldByHandle($fieldMapping->targetHandle) === null) {
                 $result->recordError([
                     'field' => $fieldAudit->handle,
                     'reason' => sprintf(
@@ -59,26 +58,17 @@ class ContentMigrationService extends Component
                 continue;
             }
 
-            // Once a field is finalized the source field has been cut out of its layouts, so
-            // content migration can no longer locate source values and would otherwise report a
-            // misleading success with zero migrated units (finding 5). Only block when the source
-            // field is genuinely absent from every layout (no audit containers). If the operator
-            // has re-added it to recover, `containers` is non-empty and migration proceeds, so the
-            // recovery instruction below is actually actionable.
-            if ($fieldMapping->phase === FieldMapping::PHASE_FINALIZED && $fieldAudit->containers === []) {
-                $result->recordError([
+            $layoutIds = $this->extractLayoutIds($fieldAudit->containers);
+            if ($layoutIds === []) {
+                $result->addWarning([
                     'field' => $fieldAudit->handle,
-                    'reason' => sprintf(
-                        'Field `%s` has been finalized and its source field is no longer in any layout. '
-                        . 'Re-add the source Hyper field to the affected layout(s), then re-run content migration to recover.',
-                        $fieldAudit->handle
-                    ),
+                    'warnings' => ['Hyper field is not present in any field layout; content was not migrated.'],
                 ]);
                 continue;
             }
 
-            $layoutIds = $this->extractLayoutIds($fieldAudit->containers);
             $fieldHadErrors = false;
+            $fieldHadWarnings = false;
             foreach ($this->buildElementQueries($fieldAudit->containers) as $query) {
                 foreach ($query->batch($batchSize) as $batch) {
                     $this->primeBatchCaches($fieldAudit, $batch);
@@ -91,18 +81,6 @@ class ContentMigrationService extends Component
                         }
 
                         try {
-                            // Trust the "migrated" record only while the stored native value still
-                            // reflects the current source link type. If the source link type drifted
-                            // since migration (or no longer converts), fall through and re-migrate
-                            // instead of skipping, so a stale target cannot survive to finalize
-                            // (finding 4). Same-type value edits remain out of scope (documented).
-                            if ($this->isMigratedInBatch($element)
-                                && $this->migratedTargetIsCurrent($element, $fieldAudit, $fieldContext, $fieldMapping->targetHandle)
-                            ) {
-                                $this->recordSkipped($result, $options, $fieldAudit, $element, 'Already migrated.');
-                                continue;
-                            }
-
                             if (!$this->elementSupportsField($element, $fieldMapping->targetHandle, $layoutIds)) {
                                 throw new \RuntimeException(sprintf(
                                     'Prepared target field `%s` is missing from the element field layout.',
@@ -112,19 +90,29 @@ class ContentMigrationService extends Component
 
                             $value = $this->getStoredFieldValue($element, $fieldAudit, $fieldContext);
                             if ($this->isNativeLinkValue($value)) {
-                                $this->recordSkipped($result, $options, $fieldAudit, $element, 'Already a native Link value.');
+                                $this->recordSkipped($result, $options, $fieldAudit->handle, $fieldAudit->uid, $element, 'Already a native Link value.');
                                 continue;
                             }
 
                             if ($this->isEmptyHyperValue($value)) {
-                                $this->recordSkipped($result, $options, $fieldAudit, $element, 'Empty value.');
+                                $this->recordSkipped($result, $options, $fieldAudit->handle, $fieldAudit->uid, $element, 'Empty value.');
                                 continue;
                             }
 
                             $conversion = $this->convertHyperValue($value, $element->siteId);
                             if ($conversion['status'] === 'unsupported') {
-                                $this->recordWarning($result, $options, $fieldAudit, $element, $conversion['warnings'], $conversion['backup']);
+                                $fieldHadWarnings = true;
+                                $this->recordWarning($result, $options, $fieldAudit->handle, $fieldAudit->uid, $element, $conversion['warnings'], $conversion['backup']);
                                 continue;
+                            }
+
+                            if ($this->isMigratedInBatch($element) && $this->migratedTargetIsCurrent($element, $fieldMapping->targetHandle, $conversion['payload'])) {
+                                $this->recordSkipped($result, $options, $fieldAudit->handle, $fieldAudit->uid, $element, 'Already migrated.');
+                                continue;
+                            }
+
+                            if ($conversion['warnings'] !== []) {
+                                $fieldHadWarnings = true;
                             }
 
                             $backupPath = null;
@@ -181,37 +169,35 @@ class ContentMigrationService extends Component
                 }
             }
 
-            if (empty($options['dryRun'])) {
-                // Do not advance a field to `readyToFinalize` merely because no exception was
-                // thrown. Re-inventory the field and only mark it ready when every non-empty
-                // source value has a verified native value (finding 4). Warning-only, unsupported,
-                // and otherwise unmigrated units leave the field at `contentMigrated`, so finalize
-                // (which recomputes the same reconciliation) refuses cutover.
-                $reconciliation = $this->reconcileField($fieldAudit, $fieldMapping->targetHandle);
-                $readyToFinalize = !$fieldHadErrors && $reconciliation['unverified'] === [];
-                LinkMigrator::$plugin->getState()->markContentMigrated($fieldAudit->uid, $readyToFinalize);
+            if (empty($options['dryRun']) && !$fieldHadErrors) {
+                $reconciliation = $this->reconcileField($fieldAudit, $fieldMapping);
+                foreach ($reconciliation['unverified'] as $item) {
+                    $fieldHadWarnings = true;
+                    $result->addWarning($item);
+                }
+
+                LinkMigrator::$plugin->getState()->markContentMigrated($fieldAudit->uid, !$fieldHadWarnings);
             }
         }
 
         return $result;
     }
 
-    /**
-     * Re-inventories every source unit for a field and verifies that a populated native
-     * Link value exists on the prepared target field for each non-empty source value.
-     *
-     * This performs a fresh read of stored source and target content and never trusts
-     * persisted workflow phase. Used to gate finalize (finding 3).
-     *
-     * @return array{total:int, verified:int, empty:int, unverified:list<array{elementId:?int, siteId:?int, reason:string}>}
-     */
-    public function reconcileField(FieldAudit $fieldAudit, string $targetHandle): array
+    public function reconcileField(FieldAudit $fieldAudit, object $fieldMapping): array
     {
         $layoutIds = $this->extractLayoutIds($fieldAudit->containers);
-        $verified = 0;
-        $empty = 0;
-        $unverified = [];
+        if ($layoutIds === []) {
+            return [
+                'checked' => 0,
+                'unverified' => [[
+                    'field' => $fieldAudit->handle,
+                    'warnings' => ['Hyper field is not present in any field layout.'],
+                ]],
+            ];
+        }
 
+        $checked = 0;
+        $unverified = [];
         foreach ($this->buildElementQueries($fieldAudit->containers) as $query) {
             foreach ($query->batch(100) as $batch) {
                 $this->primeBatchCaches($fieldAudit, $batch);
@@ -223,153 +209,34 @@ class ContentMigrationService extends Component
                         continue;
                     }
 
-                    $sourceValue = $this->getStoredFieldValue($element, $fieldAudit, $fieldContext);
-
-                    // Empty, or already a native Link value on the source handle: nothing to verify.
-                    if ($this->isEmptyHyperValue($sourceValue) || $this->isNativeLinkValue($sourceValue)) {
-                        $empty++;
+                    $value = $this->getStoredFieldValue($element, $fieldAudit, $fieldContext);
+                    if ($this->isNativeLinkValue($value) || $this->isEmptyHyperValue($value)) {
                         continue;
                     }
 
-                    // Non-empty source unit: the prepared target field must hold a populated native value.
-                    if (!$this->elementSupportsField($element, $targetHandle, $layoutIds)) {
+                    $checked++;
+                    $conversion = $this->convertHyperValue($value, $element->siteId);
+                    if (
+                        $conversion['status'] !== 'ok' ||
+                        $conversion['warnings'] !== [] ||
+                        !$this->elementSupportsField($element, $fieldMapping->targetHandle, $layoutIds) ||
+                        !$this->migratedTargetIsCurrent($element, $fieldMapping->targetHandle, $conversion['payload'])
+                    ) {
                         $unverified[] = [
-                            'elementId' => $element->id ?? null,
-                            'siteId' => $element->siteId ?? null,
-                            'reason' => sprintf('Prepared target field `%s` is missing from the element field layout.', $targetHandle),
+                            'field' => $fieldAudit->handle,
+                            'elementId' => $element->id,
+                            'siteId' => $element->siteId,
+                            'warnings' => $conversion['warnings'] ?: ['Native Link target does not match the current Hyper value.'],
                         ];
-                        continue;
-                    }
-
-                    if (!$this->isPopulatedNativeLink($this->readNativeTargetValue($element, $targetHandle))) {
-                        $unverified[] = [
-                            'elementId' => $element->id ?? null,
-                            'siteId' => $element->siteId ?? null,
-                            'reason' => 'Source value is not empty but the native target field has no migrated value.',
-                        ];
-                        continue;
-                    }
-
-                    // Re-derive what the source should convert to now and confirm the stored native
-                    // link type still matches. Catches a source that drifted to an unsupported type
-                    // or a different link type since it was migrated (finding 4). Type is an enum,
-                    // not subject to value-formatting normalization, so this never false-blocks an
-                    // unchanged unit. Same-type value edits are not detected (documented limitation).
-                    $expectedType = $this->expectedNativeType($sourceValue, $element->siteId);
-                    $actualType = $this->readNativeTargetType($element, $targetHandle);
-                    if ($expectedType === null) {
-                        $unverified[] = [
-                            'elementId' => $element->id ?? null,
-                            'siteId' => $element->siteId ?? null,
-                            'reason' => 'Source value no longer converts to a supported native link type.',
-                        ];
-                    } elseif ($actualType !== null && $actualType !== $expectedType) {
-                        $unverified[] = [
-                            'elementId' => $element->id ?? null,
-                            'siteId' => $element->siteId ?? null,
-                            'reason' => sprintf('Native target type `%s` does not match the current source link type `%s`.', $actualType, $expectedType),
-                        ];
-                    } else {
-                        $verified++;
                     }
                 }
             }
         }
 
         return [
-            'total' => $verified + $empty + count($unverified),
-            'verified' => $verified,
-            'empty' => $empty,
+            'checked' => $checked,
             'unverified' => $unverified,
         ];
-    }
-
-    private function readNativeTargetValue(ElementInterface $element, string $targetHandle): mixed
-    {
-        $values = $element->getSerializedFieldValues([$targetHandle]);
-        return $values[$targetHandle] ?? null;
-    }
-
-    private function readNativeTargetType(ElementInterface $element, string $targetHandle): ?string
-    {
-        $value = $this->readNativeTargetValue($element, $targetHandle);
-        if (is_string($value)) {
-            $decoded = $this->decodeSerializedJson($value);
-            if ($decoded !== null) {
-                $value = $decoded;
-            }
-        }
-
-        if (is_array($value) && isset($value['type']) && is_string($value['type']) && $value['type'] !== '') {
-            return $value['type'];
-        }
-
-        return null;
-    }
-
-    /**
-     * The native link type a source value would convert to right now, or null if it would
-     * no longer convert to a supported type. Used for drift detection (finding 4).
-     */
-    private function expectedNativeType(mixed $sourceValue, ?int $siteId): ?string
-    {
-        $conversion = $this->convertHyperValue($sourceValue, $siteId);
-        if ($conversion['status'] !== 'ok') {
-            return null;
-        }
-
-        $type = $conversion['summary']['type'] ?? null;
-        return is_string($type) && $type !== '' ? $type : null;
-    }
-
-    /**
-     * Whether an already-migrated unit's stored native value still reflects the current source.
-     * Empty/native source values are treated as current (nothing to re-migrate). Otherwise the
-     * stored native link type must match the type the current source converts to (finding 4).
-     */
-    private function migratedTargetIsCurrent(
-        ElementInterface $element,
-        FieldAudit $fieldAudit,
-        array $fieldContext,
-        string $targetHandle
-    ): bool {
-        $sourceValue = $this->getStoredFieldValue($element, $fieldAudit, $fieldContext);
-        if ($this->isEmptyHyperValue($sourceValue) || $this->isNativeLinkValue($sourceValue)) {
-            return true;
-        }
-
-        $expectedType = $this->expectedNativeType($sourceValue, $element->siteId);
-        if ($expectedType === null) {
-            return false;
-        }
-
-        // The stored native value must still be populated. If it was cleared or lost after
-        // migration, re-migrate instead of trusting the stale "migrated" record, so a blanked
-        // target can be recovered by simply re-running content. This mirrors reconcileField()'s
-        // presence gate, so the finalize authority and the re-migration skip guard agree: a unit
-        // reconcileField marks unverified is also one content will re-migrate, not skip.
-        if (!$this->isPopulatedNativeLink($this->readNativeTargetValue($element, $targetHandle))) {
-            return false;
-        }
-
-        $actualType = $this->readNativeTargetType($element, $targetHandle);
-        return $actualType === null || $actualType === $expectedType;
-    }
-
-    private function isPopulatedNativeLink(mixed $value): bool
-    {
-        if (is_string($value)) {
-            $decoded = $this->decodeSerializedJson($value);
-            if ($decoded !== null) {
-                $value = $decoded;
-            }
-        }
-
-        if (!is_array($value) || !isset($value['value'])) {
-            return false;
-        }
-
-        return trim((string)$value['value']) !== '';
     }
 
     /**
@@ -388,10 +255,6 @@ class ContentMigrationService extends Component
             ) {
                 $classes[$container->type] = true;
             }
-        }
-
-        if (empty($classes)) {
-            $classes[Entry::class] = true;
         }
 
         $queries = [];
@@ -479,6 +342,80 @@ class ContentMigrationService extends Component
     private function isMigratedInBatch(ElementInterface $element): bool
     {
         return $this->migratedStateCache[$this->elementKey($element)] ?? false;
+    }
+
+    private function migratedTargetIsCurrent(ElementInterface $element, string $targetHandle, array $expectedPayload): bool
+    {
+        $actual = $this->normalizeNativePayload($this->readNativePayload($element, $targetHandle));
+        $expected = $this->normalizeNativePayload($expectedPayload);
+
+        return $actual !== null && $expected !== null && $actual === $expected;
+    }
+
+    private function readNativePayload(ElementInterface $element, string $targetHandle): mixed
+    {
+        $values = $element->getSerializedFieldValues([$targetHandle]);
+        return $this->unwrapStoredFieldValue($values[$targetHandle] ?? null);
+    }
+
+    private function normalizeNativePayload(mixed $payload): ?array
+    {
+        if (is_object($payload)) {
+            $payload = [
+                'type' => $this->readHyperProperty($payload, ['type']),
+                'value' => $this->readHyperProperty($payload, ['value', 'linkValue', 'url']),
+            ];
+        }
+
+        if (!is_array($payload) || !isset($payload['type'])) {
+            return null;
+        }
+
+        $type = $this->normalizeNativeType($payload['type']);
+        $value = $payload['value'] ?? $payload['elementId'] ?? $payload['id'] ?? null;
+
+        if (is_string($value)) {
+            $decoded = $this->decodeSerializedJson($value);
+            if (is_array($decoded)) {
+                $value = $decoded['elementId'] ?? $decoded['id'] ?? $decoded['value'] ?? $value;
+            }
+        } elseif (is_array($value)) {
+            $value = $value['elementId'] ?? $value['id'] ?? $value['value'] ?? $value;
+        } elseif ($value instanceof ElementInterface) {
+            $value = $value->id;
+        }
+
+        if (in_array($type, ['asset', 'category', 'entry'], true)) {
+            $value = is_numeric($value) ? (int)$value : $value;
+        } elseif (is_scalar($value)) {
+            $value = trim((string)$value);
+        }
+
+        if ($type === '' || $value === null || $value === '') {
+            return null;
+        }
+
+        return [
+            'type' => $type,
+            'value' => $value,
+        ];
+    }
+
+    private function normalizeNativeType(mixed $type): string
+    {
+        $type = $this->normalizeType($type);
+        return $type === 'phone' ? 'tel' : $type;
+    }
+
+    private function findFieldByHandle(string $handle): ?object
+    {
+        foreach (Craft::$app->getFields()->getAllFields(false) as $field) {
+            if ((string)$field->handle === $handle) {
+                return $field;
+            }
+        }
+
+        return null;
     }
 
     private function elementSupportsField(ElementInterface $element, string $fieldHandle, array $layoutIds): bool
@@ -595,16 +532,17 @@ class ContentMigrationService extends Component
     private function recordSkipped(
         ContentMigrationResult $result,
         array $options,
-        FieldAudit $fieldAudit,
+        string $fieldHandle,
+        string $sourceFieldUid,
         ElementInterface $element,
         string $reason
     ): void {
         if (empty($options['dryRun'])) {
-            LinkMigrator::$plugin->getState()->markSkipped('content', $fieldAudit->handle, $fieldAudit->uid, $element, $reason);
+            LinkMigrator::$plugin->getState()->markSkipped('content', $fieldHandle, $sourceFieldUid, $element, $reason);
         }
 
         $result->addSkipped([
-            'field' => $fieldAudit->handle,
+            'field' => $fieldHandle,
             'elementId' => $element->id,
             'reason' => $reason,
         ]);
@@ -613,17 +551,18 @@ class ContentMigrationService extends Component
     private function recordWarning(
         ContentMigrationResult $result,
         array $options,
-        FieldAudit $fieldAudit,
+        string $fieldHandle,
+        string $sourceFieldUid,
         ElementInterface $element,
         array $warnings,
         array $backup
     ): void {
         if (empty($options['dryRun'])) {
-            LinkMigrator::$plugin->getState()->markWarning('content', $fieldAudit->handle, $fieldAudit->uid, $element, $warnings, $backup);
+            LinkMigrator::$plugin->getState()->markWarning('content', $fieldHandle, $sourceFieldUid, $element, $warnings, $backup);
         }
 
         $result->addWarning([
-            'field' => $fieldAudit->handle,
+            'field' => $fieldHandle,
             'elementId' => $element->id,
             'warnings' => $warnings,
         ]);
@@ -735,10 +674,17 @@ class ContentMigrationService extends Component
             'email' => 'email',
             'entry' => 'entry',
             'phone' => 'tel',
-            'sms' => 'sms',
             'url' => 'url',
             default => null,
         };
+
+        if ($type === 'sms') {
+            return [
+                'status' => 'unsupported',
+                'warnings' => ['Craft native Link has no SMS link type.'],
+                'backup' => $backup,
+            ];
+        }
 
         if ($nativeType === null) {
             if ($type === 'product' && $element instanceof ElementInterface) {
@@ -750,7 +696,7 @@ class ContentMigrationService extends Component
                 }
             }
 
-            if ($nativeType === null && (!$linkValue || !is_scalar($linkValue))) {
+            if ($nativeType === null && (!$linkValue || !is_scalar($linkValue) || !$this->isUrlLike((string)$linkValue))) {
                 return [
                     'status' => 'unsupported',
                     'warnings' => [sprintf('Unsupported Hyper link type for content migration: %s', $type ?: 'unknown')],
@@ -774,6 +720,14 @@ class ContentMigrationService extends Component
                     'warnings' => ['Linked element is missing or invalid.'],
                     'backup' => $backup,
                 ];
+            }
+
+            if (is_numeric($linkedSiteId) && is_numeric($elementSiteId) && (int)$linkedSiteId !== (int)$elementSiteId) {
+                $warnings[] = sprintf(
+                    'Hyper linkSiteId %d differs from owner siteId %d; Craft native Link stores the element ID only.',
+                    (int)$linkedSiteId,
+                    (int)$elementSiteId
+                );
             }
 
             $linkValue = $element->id;
@@ -809,6 +763,16 @@ class ContentMigrationService extends Component
     {
         $value = strtolower((string)$type);
         return preg_replace('/^.*\\\\/', '', $value);
+    }
+
+    private function isUrlLike(string $value): bool
+    {
+        $value = trim($value);
+        return $value !== ''
+            && (
+                filter_var($value, FILTER_VALIDATE_URL) !== false
+                || preg_match('/^(\/|#|\.\/|\.\.\/|[a-z][a-z0-9+.-]*:)/i', $value) === 1
+            );
     }
 
     private function readHyperProperty(mixed $value, array $keys): mixed

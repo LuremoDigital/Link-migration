@@ -1,187 +1,64 @@
 {% extends "_layouts/cp" %}
 
 {% set title = "Link Migrator" %}
-
-{% set mismatchCount = audit.mismatchReferences|length %}
-{% set totalFields = statuses|length %}
-{% set migratableCount = statuses|filter(s => s.mappingStatus != 'unsupported')|length %}
-{% set preparedCount = statuses|filter(s => s.phase != 'audited')|length %}
-{% set readyCount = statuses|filter(s => s.phase in ['readyToFinalize', 'finalized'])|length %}
-{% set finalizedCount = statuses|filter(s => s.phase == 'finalized')|length %}
-
-{% set phaseLabels = {
-  audited: 'Audited'|t('link-migrator'),
-  prepared: 'Prepared'|t('link-migrator'),
-  contentMigrated: 'Content migrated'|t('link-migrator'),
-  readyToFinalize: 'Ready to finalize'|t('link-migrator'),
-  finalized: 'Finalized'|t('link-migrator'),
-} %}
-{% set phaseColors = {
-  audited: '',
-  prepared: 'orange',
-  contentMigrated: 'orange',
-  readyToFinalize: 'green',
-  finalized: 'green',
-} %}
+{% set pluginCpUrl = url('link-migrator') %}
 
 {% block content %}
   <div class="readable">
+    <h1>Hyper to Link staged migration</h1>
+
     <p>
-      Link Migrator moves Verbb Hyper fields to Craft’s native Link field in safe stages. Your Hyper fields and
-      values stay untouched until the final step: prepare creates a parallel native Link field next to each Hyper
-      field, migrate copies and verifies the content, and only finalize removes the Hyper fields from field layouts.
-    </p>
-    <p class="light">
-      Every step is also available as a CLI command with dry-run support — recommended for large sites, since the
-      buttons below run synchronously in this request. See the plugin README for the full CLI workflow.
+      This wizard keeps Hyper fields intact, prepares parallel native Link fields, migrates content in batches, and only cuts field layouts over during the final step.
     </p>
 
-    {% if totalFields == 0 %}
-      <div class="zilch">
-        <p>{{ 'No Hyper fields detected — there is nothing to migrate.'|t('link-migrator') }}</p>
-      </div>
-    {% else %}
+    <div class="buttons" style="margin-bottom: 24px;">
+      <a class="btn" href="{{ pluginCpUrl }}">Refresh audit</a>
+    </div>
 
-      <h2>{{ 'Migration steps'|t('link-migrator') }}</h2>
-
-      <div class="pane">
-        <h3>1. {{ 'Audit'|t('link-migrator') }} <span class="status green"></span></h3>
-        <p>
-          {{ '{total} Hyper field(s) detected. Auditing is read-only and re-runs on every page load.'|t('link-migrator', {
-            total: totalFields,
-          }) }}
-        </p>
-        <a class="btn" href="{{ url('link-migrator') }}">{{ 'Refresh audit'|t('link-migrator') }}</a>
-      </div>
-
-      <div class="pane">
-        <h3>2. {{ 'Prepare native fields'|t('link-migrator') }}
-          {% if migratableCount > 0 and preparedCount == migratableCount %}<span class="status green"></span>{% endif %}
-        </h3>
-        <p>
-          {{ 'Creates a native Link field for every supported Hyper field and inserts it next to the source field in each layout. No content is changed, and re-running is safe (idempotent).'|t('link-migrator') }}
-          <strong>{{ '{prepared} of {total} prepared.'|t('link-migrator', { prepared: preparedCount, total: migratableCount }) }}</strong>
-        </p>
-        <form method="post" onsubmit="return confirm({{ 'This will create native Link fields and add them to your field layouts. Continue?'|t('link-migrator')|json_encode|raw }});">
-          {{ csrfInput() }}
-          {{ actionInput('link-migrator/wizard/prepare-fields') }}
-          <button class="btn submit">{{ 'Prepare native fields'|t('link-migrator') }}</button>
-        </form>
-      </div>
-
-      <div class="pane">
-        <h3>3. {{ 'Migrate content'|t('link-migrator') }}
-          {% if migratableCount > 0 and readyCount == migratableCount %}<span class="status green"></span>{% endif %}
-        </h3>
-        <p>
-          {{ 'Copies every Hyper value into its prepared native field and verifies the saved result. Hyper values are left untouched, per-element backups are written first, and re-running only picks up missing or changed values.'|t('link-migrator') }}
-          <strong>{{ '{ready} of {total} verified and ready to finalize.'|t('link-migrator', { ready: readyCount, total: migratableCount }) }}</strong>
-        </p>
-        <form method="post" onsubmit="return confirm({{ 'This will write native Link content for all prepared fields (with backups). Continue?'|t('link-migrator')|json_encode|raw }});">
-          {{ csrfInput() }}
-          {{ actionInput('link-migrator/wizard/migrate-content') }}
-          <button class="btn submit">{{ 'Migrate content'|t('link-migrator') }}</button>
-        </form>
-      </div>
-
-      <div class="pane">
-        <h3>4. {{ 'Review template impact'|t('link-migrator') }}
-          {% if mismatchCount == 0 %}<span class="status green"></span>{% endif %}
-        </h3>
-        {% if mismatchCount > 0 %}
-          <p>
-            <strong>{{ '{count} potential Hyper API usage(s) found in your templates and modules.'|t('link-migrator', { count: mismatchCount }) }}</strong>
-            {{ 'These keep working until finalize, but will break once the Hyper field leaves the layout. Run the CLI report for file/line details:'|t('link-migrator') }}
-          </p>
-          <p><code>php craft link-migrator/migrate/mismatches</code></p>
-        {% else %}
-          <p>{{ 'No Hyper-only API usage found in templates or modules.'|t('link-migrator') }}</p>
-        {% endif %}
-        <p class="light">
-          {{ 'Common changes:'|t('link-migrator') }}
-          <code>.text</code> → <code>.label</code>,
-          <code>getElement()</code> → <code>.element</code>,
-          {{ 'Hyper class checks'|t('link-migrator') }} → <code>entry</code>/<code>url</code> {{ 'type handles'|t('link-migrator') }}.
-        </p>
-      </div>
-
-      <div class="pane">
-        <h3>5. {{ 'Finalize'|t('link-migrator') }}
-          {% if migratableCount > 0 and finalizedCount == migratableCount %}<span class="status green"></span>{% endif %}
-        </h3>
-        <p>
-          {{ 'Removes the Hyper fields from all field layouts, leaving the native Link fields in place. Before cutting over, every value is re-verified against live content (presence and link type) — finalize refuses if anything is unverified. Hyper fields themselves are not deleted.'|t('link-migrator') }}
-        </p>
-        <form method="post" onsubmit="return confirm({{ 'This will remove Hyper fields from your field layouts. Make sure your templates are updated. Continue?'|t('link-migrator')|json_encode|raw }});">
-          {{ csrfInput() }}
-          {{ actionInput('link-migrator/wizard/finalize') }}
-          {% if mismatchCount > 0 %}
-            <div class="field">
-              <label>
-                <input type="checkbox" name="acknowledgeMismatches" value="1">
-                {{ 'I reviewed the {count} template mismatch(es) and want to finalize anyway'|t('link-migrator', { count: mismatchCount }) }}
-              </label>
-            </div>
-          {% endif %}
-          <button class="btn submit">{{ 'Finalize cutover'|t('link-migrator') }}</button>
-        </form>
-      </div>
-
-      <h2>{{ 'Field status'|t('link-migrator') }}</h2>
-      <table class="data fullwidth">
-        <thead>
+    <h2>Workflow status</h2>
+    <table class="data fullwidth">
+      <thead>
+        <tr>
+          <th>Source</th>
+          <th>Native target</th>
+          <th>Phase</th>
+          <th>Mapping</th>
+          <th>Content</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for status in statuses %}
+          {% set content = status.contentSummary ?? {} %}
           <tr>
-            <th>{{ 'Hyper field'|t('link-migrator') }}</th>
-            <th>{{ 'Native target'|t('link-migrator') }}</th>
-            <th>{{ 'Phase'|t('link-migrator') }}</th>
-            <th>{{ 'Support'|t('link-migrator') }}</th>
-            <th>{{ 'Content'|t('link-migrator') }}</th>
+            <td>{{ status.sourceHandle }}</td>
+            <td>{{ status.targetHandle ?? 'Not prepared' }}</td>
+            <td>{{ status.phase }}</td>
+            <td>{{ status.mappingStatus }}</td>
+            <td>
+              migrated={{ content.migratedCount ?? 0 }},
+              skipped={{ content.skippedCount ?? 0 }},
+              empty={{ content.skippedEmptyCount ?? 0 }},
+              already migrated={{ content.skippedAlreadyMigratedCount ?? 0 }},
+              already native={{ content.skippedAlreadyNativeCount ?? 0 }},
+              other skipped={{ content.skippedOtherCount ?? 0 }},
+              warnings={{ content.warningCount ?? 0 }},
+              errors={{ content.errorCount ?? 0 }}
+            </td>
           </tr>
-        </thead>
-        <tbody>
-          {% for status in statuses %}
-            {% set content = status.contentSummary ?? {} %}
-            {% set skipped = content.skippedCount ?? 0 %}
-            {% set warnings = content.warningCount ?? 0 %}
-            {% set errors = content.errorCount ?? 0 %}
-            <tr>
-              <td>
-                {{ status.sourceName ?? status.sourceHandle }}<br>
-                <code class="light">{{ status.sourceHandle }}</code>
-              </td>
-              <td>
-                {% if status.targetHandle %}
-                  <code>{{ status.targetHandle }}</code>
-                {% else %}
-                  <span class="light">{{ 'Not prepared'|t('link-migrator') }}</span>
-                {% endif %}
-              </td>
-              <td>
-                <span class="status {{ phaseColors[status.phase] ?? '' }}"></span>
-                {{ phaseLabels[status.phase] ?? status.phase }}
-              </td>
-              <td>{{ status.mappingStatus }}</td>
-              <td>
-                {{ '{count} migrated'|t('link-migrator', { count: content.migratedCount ?? 0 }) }}
-                {% if skipped > 0 %} · {{ '{count} skipped'|t('link-migrator', { count: skipped }) }}{% endif %}
-                {% if warnings > 0 %} · {{ '{count} warning(s)'|t('link-migrator', { count: warnings }) }}{% endif %}
-                {% if errors > 0 %} · <span class="error">{{ '{count} error(s)'|t('link-migrator', { count: errors }) }}</span>{% endif %}
-                {% if skipped > 0 %}
-                  <div class="light">
-                    {{ 'empty: {empty}, already migrated: {done}, already native: {native}, other: {other}'|t('link-migrator', {
-                      empty: content.skippedEmptyCount ?? 0,
-                      done: content.skippedAlreadyMigratedCount ?? 0,
-                      native: content.skippedAlreadyNativeCount ?? 0,
-                      other: content.skippedOtherCount ?? 0,
-                    }) }}
-                  </div>
-                {% endif %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+        {% else %}
+          <tr>
+            <td colspan="5">No Hyper fields detected.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
 
-    {% endif %}
+    <h2>Template impact review</h2>
+    <p>Review the CLI mismatch report before finalizing. This release does not rewrite templates automatically.</p>
+    <ul>
+      <li><code>.text</code> becomes <code>.label</code></li>
+      <li><code>getElement()</code> becomes <code>.element</code></li>
+      <li>Hyper class-name type checks become native short handles like <code>entry</code> or <code>url</code></li>
+    </ul>
   </div>
 {% endblock %}
