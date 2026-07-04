@@ -49,6 +49,9 @@ class LinkMigrator extends Plugin
                 UrlManager::EVENT_REGISTER_CP_URL_RULES,
                 static function(RegisterUrlRulesEvent $event) {
                     $event->rules[static::HANDLE] = static::HANDLE . '/wizard/index';
+                    $event->rules[static::HANDLE . '/prepare'] = static::HANDLE . '/wizard/prepare-fields';
+                    $event->rules[static::HANDLE . '/content'] = static::HANDLE . '/wizard/migrate-content';
+                    $event->rules[static::HANDLE . '/finalize'] = static::HANDLE . '/wizard/finalize';
                 }
             );
         }

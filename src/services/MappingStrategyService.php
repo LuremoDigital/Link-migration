@@ -13,7 +13,6 @@ class MappingStrategyService extends Component
         'email' => 'email',
         'entry' => 'entry',
         'phone' => 'tel',
-        'sms' => 'sms',
         'url' => 'url',
     ];
 
@@ -27,6 +26,18 @@ class MappingStrategyService extends Component
             return $decision;
         }
 
+        if ($linkTypes === []) {
+            $typesConfigured = array_key_exists('linkTypes', $settings) || array_key_exists('types', $settings);
+            if ($typesConfigured && empty($settings['enableAllLinkTypes'])) {
+                $decision->status = MappingDecision::STATUS_UNSUPPORTED;
+                $decision->unsupportedReasons[] = 'Hyper field has no enabled link types.';
+                return $decision;
+            }
+
+            $linkTypes = array_keys(self::TYPE_MAP);
+            $decision->warnings[] = 'Hyper field does not list enabled link types; using Craft Link defaults.';
+        }
+
         foreach ($linkTypes as $type) {
             $normalized = strtolower((string)$type);
 
@@ -35,9 +46,8 @@ class MappingStrategyService extends Component
                 continue;
             }
 
-            $decision->craftLinkTypes[] = 'url';
-            $decision->warnings[] = sprintf(
-                'Custom or unsupported Hyper link type "%s" will be migrated as a native URL link.',
+            $decision->unsupportedReasons[] = sprintf(
+                'Custom or unsupported Hyper link type "%s" requires manual review.',
                 $type
             );
             $decision->lossyAttributes[] = 'customTypeFallback';

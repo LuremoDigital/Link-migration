@@ -55,12 +55,12 @@ class AuditService extends Component
         ],
         [
             'pattern' => 'verbb\\hyper\\links\\',
-            'replacement' => 'entry, asset, category, email, phone, sms, url',
+            'replacement' => 'entry, asset, category, email, phone, url',
             'reason' => 'Hyper type checks often use class names; Craft LinkData `.type` uses short handles.',
         ],
         [
             'pattern' => 'verbb\\\\hyper\\\\links\\\\',
-            'replacement' => 'entry, asset, category, email, phone, sms, url',
+            'replacement' => 'entry, asset, category, email, phone, url',
             'reason' => 'Escaped Hyper class-name checks in PHP strings must be rewritten to Craft LinkData short handles.',
         ],
     ];
@@ -134,11 +134,28 @@ class AuditService extends Component
         $types = $settings['linkTypes'] ?? $settings['types'] ?? [];
         $handles = [];
 
-        foreach ((array)$types as $type) {
+        foreach ((array)$types as $key => $type) {
             if (is_string($type)) {
                 $handles[] = $this->normalizeHyperType($type);
             } elseif (is_array($type) && isset($type['type'])) {
+                if (($type['enabled'] ?? true) === false) {
+                    continue;
+                }
+
                 $handles[] = $this->normalizeHyperType((string)$type['type']);
+            } elseif (is_array($type)) {
+                if (($type['enabled'] ?? true) === false) {
+                    continue;
+                }
+
+                foreach (['handle', 'class'] as $key) {
+                    if (isset($type[$key]) && is_string($type[$key])) {
+                        $handles[] = $this->normalizeHyperType($type[$key]);
+                        break;
+                    }
+                }
+            } elseif ($type !== false && is_string($key)) {
+                $handles[] = $this->normalizeHyperType($key);
             }
         }
 
@@ -147,7 +164,18 @@ class AuditService extends Component
 
     private function normalizeHyperType(string $type): string
     {
-        return preg_replace('/^.*\\\\/', '', strtolower($type));
+        $type = strtolower($type);
+        $type = preg_replace('/^.*\\\\/', '', $type);
+
+        return match ($type) {
+            'asset' => 'asset',
+            'category' => 'category',
+            'email' => 'email',
+            'entry' => 'entry',
+            'phone' => 'phone',
+            'url' => 'url',
+            default => $type,
+        };
     }
 
     private function extractCustomFieldLayouts(array $settings): array
@@ -180,13 +208,13 @@ class AuditService extends Component
         $reports = glob($baseDir . DIRECTORY_SEPARATOR . '*-fields.json') ?: [];
         rsort($reports, SORT_STRING);
 
+        $recovered = [];
         foreach ($reports as $reportPath) {
             $payload = json_decode((string)file_get_contents($reportPath), true);
             if (!is_array($payload)) {
                 continue;
             }
 
-            $recovered = [];
             foreach (($payload['migrated'] ?? []) as $item) {
                 $handle = $item['field'] ?? null;
                 if (!is_string($handle) || $handle === '') {
@@ -201,7 +229,11 @@ class AuditService extends Component
                     continue;
                 }
 
-                $field = Craft::$app->getFields()->getFieldByHandle($handle);
+                if (isset($recovered[$handle])) {
+                    continue;
+                }
+
+                $field = $this->findFieldByHandle($handle);
                 if (!$field || !$field instanceof Link) {
                     continue;
                 }
@@ -225,15 +257,22 @@ class AuditService extends Component
                 $audit->mapping = $mapping;
                 $audit->warnings = $mapping->warnings;
 
-                $recovered[] = $audit;
-            }
-
-            if ($recovered !== []) {
-                return $recovered;
+                $recovered[$handle] = $audit;
             }
         }
 
-        return [];
+        return array_values($recovered);
+    }
+
+    private function findFieldByHandle(string $handle): ?object
+    {
+        foreach (Craft::$app->getFields()->getAllFields(false) as $field) {
+            if ((string)$field->handle === $handle) {
+                return $field;
+            }
+        }
+
+        return null;
     }
 
     private function findCodeReferences(): array
@@ -253,62 +292,14 @@ class AuditService extends Component
             'Hyper',
         ];
 
-        $references = [];
-
-        foreach ($this->scanSourceLines() as [$file, $line, $text]) {
-            foreach ($patterns as $pattern) {
-                if (str_contains($text, $pattern)) {
-                    $references[] = [
-                        'file' => $file,
-                        'line' => $line,
-                        'pattern' => $pattern,
-                        'snippet' => trim($text),
-                    ];
-                }
-            }
-        }
-
-        return $references;
-    }
-
-    public function findMismatchReferences(): array
-    {
-        $matches = [];
-
-        foreach ($this->scanSourceLines() as [$file, $line, $text]) {
-            foreach (self::MISMATCH_PATTERNS as $mismatch) {
-                if (!str_contains($text, $mismatch['pattern'])) {
-                    continue;
-                }
-
-                $matches[] = [
-                    'file' => $file,
-                    'line' => $line,
-                    'pattern' => $mismatch['pattern'],
-                    'replacement' => $mismatch['replacement'],
-                    'reason' => $mismatch['reason'],
-                    'snippet' => trim($text),
-                ];
-            }
-        }
-
-        return $matches;
-    }
-
-    /**
-     * Yields [path, 1-based line number, line text] for every line of every readable file under
-     * the project template/module/src/config roots.
-     *
-     * @return \Generator<array{0:string, 1:int, 2:string}>
-     */
-    private function scanSourceLines(): \Generator
-    {
         $roots = [
             Craft::getAlias('@root/templates'),
             Craft::getAlias('@root/modules'),
             Craft::getAlias('@root/src'),
             Craft::getAlias('@root/config'),
         ];
+
+        $references = [];
 
         foreach ($roots as $root) {
             if (!$root || !is_dir($root)) {
@@ -327,9 +318,69 @@ class AuditService extends Component
                 }
 
                 foreach ($contents as $lineNumber => $line) {
-                    yield [$fileInfo->getPathname(), $lineNumber + 1, $line];
+                    foreach ($patterns as $pattern) {
+                        if (str_contains($line, $pattern)) {
+                            $references[] = [
+                                'file' => $fileInfo->getPathname(),
+                                'line' => $lineNumber + 1,
+                                'pattern' => $pattern,
+                                'snippet' => trim($line),
+                            ];
+                        }
+                    }
                 }
             }
         }
+
+        return $references;
+    }
+
+    public function findMismatchReferences(): array
+    {
+        $roots = [
+            Craft::getAlias('@root/templates'),
+            Craft::getAlias('@root/modules'),
+            Craft::getAlias('@root/src'),
+            Craft::getAlias('@root/config'),
+        ];
+
+        $matches = [];
+
+        foreach ($roots as $root) {
+            if (!$root || !is_dir($root)) {
+                continue;
+            }
+
+            $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root));
+            foreach ($iterator as $fileInfo) {
+                if (!$fileInfo->isFile()) {
+                    continue;
+                }
+
+                $contents = @file($fileInfo->getPathname());
+                if ($contents === false) {
+                    continue;
+                }
+
+                foreach ($contents as $lineNumber => $line) {
+                    foreach (self::MISMATCH_PATTERNS as $mismatch) {
+                        if (!str_contains($line, $mismatch['pattern'])) {
+                            continue;
+                        }
+
+                        $matches[] = [
+                            'file' => $fileInfo->getPathname(),
+                            'line' => $lineNumber + 1,
+                            'pattern' => $mismatch['pattern'],
+                            'replacement' => $mismatch['replacement'],
+                            'reason' => $mismatch['reason'],
+                            'snippet' => trim($line),
+                        ];
+                    }
+                }
+            }
+        }
+
+        return $matches;
     }
 }

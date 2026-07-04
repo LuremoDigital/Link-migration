@@ -17,7 +17,6 @@ class MigrateController extends Controller
     public bool $createBackup = false;
     public int $batchSize = 100;
     public bool $applyProjectConfig = true;
-    public bool $acknowledgeMismatches = false;
 
     public function options($actionID): array
     {
@@ -29,7 +28,6 @@ class MigrateController extends Controller
         $options[] = 'createBackup';
         $options[] = 'batchSize';
         $options[] = 'applyProjectConfig';
-        $options[] = 'acknowledgeMismatches';
 
         return $options;
     }
@@ -49,6 +47,12 @@ class MigrateController extends Controller
     {
         [, $exitCode] = $this->runAuditStage();
         return $exitCode;
+    }
+
+    public function actionFields(): int
+    {
+        $this->stderr("`fields` is deprecated. Use `prepare-fields`.\n", Console::FG_RED);
+        return ExitCode::UNSPECIFIED_ERROR;
     }
 
     public function actionPrepareFields(): int
@@ -71,6 +75,15 @@ class MigrateController extends Controller
 
         [, $exitCode] = $this->runContentStage();
         return $exitCode;
+    }
+
+    public function actionAll(): int
+    {
+        $this->stderr(
+            "`all` is no longer part of the recommended production workflow. Run `audit`, `prepare-fields`, `content`, and `finalize` explicitly.\n",
+            Console::FG_RED
+        );
+        return ExitCode::UNSPECIFIED_ERROR;
     }
 
     public function actionStatus(): int
@@ -108,22 +121,9 @@ class MigrateController extends Controller
         }
 
         $plugin = LinkMigrator::$plugin;
-        $report = $plugin->getReport()->beginRun('finalize', $this->dryRun);
+        $report = $plugin->getReport()->beginRun('finalize', $this->dryRun, $this->verbose);
         $audit = $plugin->getAudit()->buildAudit($this->field);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'finalize cutover');
-
-        // Layout cutover leaves templates referencing Hyper-only APIs broken. Refuse to finalize
-        // while unreviewed template mismatches exist unless the operator explicitly acknowledges
-        // them (finding 9). Dry runs are exempt so the impact can still be previewed.
-        $mismatchCount = count($audit->mismatchReferences);
-        if (!$this->dryRun && $mismatchCount > 0 && !$this->acknowledgeMismatches) {
-            $this->stderr(sprintf(
-                "Refusing to finalize: %d unreviewed template mismatch(es) found. "
-                . "Review `link-migrator/migrate/mismatches`, then re-run with --acknowledge-mismatches=1.\n",
-                $mismatchCount
-            ), Console::FG_RED);
-            return ExitCode::UNSPECIFIED_ERROR;
-        }
 
         $result = $plugin->getCutover()->finalize($audit, [
             'field' => $this->field,
@@ -162,9 +162,17 @@ class MigrateController extends Controller
     public function actionMismatches(): int
     {
         $plugin = LinkMigrator::$plugin;
-        $report = $plugin->getReport()->beginRun('mismatches', $this->dryRun);
+        $report = $plugin->getReport()->beginRun('mismatches', true, $this->verbose);
         $audit = $plugin->getAudit()->buildAudit($this->field);
-        $plugin->getReport()->writeMismatches($report, $audit);
+
+        $payload = [
+            'summary' => [
+                'mismatches' => count($audit->mismatchReferences),
+            ],
+            'mismatches' => $audit->mismatchReferences,
+        ];
+
+        $plugin->getReport()->writePayload($report, $payload);
 
         $this->stdout(sprintf("Potential Hyper API mismatches: %d\n", count($audit->mismatchReferences)), Console::FG_YELLOW);
 
@@ -188,7 +196,7 @@ class MigrateController extends Controller
     private function runAuditStage(): array
     {
         $plugin = LinkMigrator::$plugin;
-        $report = $plugin->getReport()->beginRun('audit', $this->dryRun);
+        $report = $plugin->getReport()->beginRun('audit', $this->dryRun, $this->verbose);
         $audit = $plugin->getAudit()->buildAudit($this->field);
         $plugin->getReport()->writeAudit($report, $audit, $this);
         $this->stdout("Audit written to {$report->reportPath}\n", Console::FG_GREEN);
@@ -200,7 +208,7 @@ class MigrateController extends Controller
     {
         $plugin = LinkMigrator::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
-        $report = $plugin->getReport()->beginRun('prepare-fields', $this->dryRun);
+        $report = $plugin->getReport()->beginRun('prepare-fields', $this->dryRun, $this->verbose);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'prepare native fields');
 
         $result = $plugin->getFieldMigration()->migrate($audit, [
@@ -220,7 +228,7 @@ class MigrateController extends Controller
     {
         $plugin = LinkMigrator::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
-        $report = $plugin->getReport()->beginRun('content', $this->dryRun);
+        $report = $plugin->getReport()->beginRun('content', $this->dryRun, $this->verbose);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'content migration');
 
         $result = $plugin->getContentMigration()->migrate($audit, [
@@ -235,6 +243,6 @@ class MigrateController extends Controller
         $plugin->getReport()->writeContentResult($report, $result, $this);
         $this->stdout("Content migration report written to {$report->reportPath}\n", Console::FG_GREEN);
 
-        return [$result, $result->hasErrors() ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK];
+        return [$result, ($result->hasErrors() || $result->hasWarnings()) ? ExitCode::UNSPECIFIED_ERROR : ExitCode::OK];
     }
 }
