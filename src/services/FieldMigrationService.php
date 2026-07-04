@@ -41,7 +41,8 @@ class FieldMigrationService extends Component
                 if ($existingMapping?->targetHandle) {
                     $mappedField = $fieldsService->getFieldByHandle($existingMapping->targetHandle);
                     if ($mappedField instanceof Link) {
-                        if (empty($options['dryRun'])) {
+                        $dryRun = !empty($options['dryRun']);
+                        if (!$dryRun) {
                             // Re-attach idempotently so layouts that started using the
                             // source field after the original prepare (or lost the target
                             // element to a manual edit) are repaired by re-running prepare.
@@ -51,7 +52,9 @@ class FieldMigrationService extends Component
                         $result->skipped[] = [
                             'field' => $fieldAudit->handle,
                             'target' => $existingMapping->targetHandle,
-                            'reason' => 'Native field already prepared. Layout placement re-checked.',
+                            'reason' => $dryRun
+                                ? 'Native field already prepared.'
+                                : 'Native field already prepared. Layout placement re-checked.',
                         ];
                         $result->mappings[] = $existingMapping->toArray();
                         continue;

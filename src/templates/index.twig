@@ -61,7 +61,7 @@
           {{ 'Creates a native Link field for every supported Hyper field and inserts it next to the source field in each layout. No content is changed, and re-running is safe (idempotent).'|t('link-migrator') }}
           <strong>{{ '{prepared} of {total} prepared.'|t('link-migrator', { prepared: preparedCount, total: totalFields }) }}</strong>
         </p>
-        <form method="post" onsubmit="return confirm({{ 'This will create native Link fields and add them to your field layouts. Continue?'|t('link-migrator')|json_encode }});">
+        <form method="post" onsubmit="return confirm({{ 'This will create native Link fields and add them to your field layouts. Continue?'|t('link-migrator')|json_encode|raw }});">
           {{ csrfInput() }}
           {{ actionInput('link-migrator/wizard/prepare-fields') }}
           <button class="btn submit">{{ 'Prepare native fields'|t('link-migrator') }}</button>
@@ -76,7 +76,7 @@
           {{ 'Copies every Hyper value into its prepared native field and verifies the saved result. Hyper values are left untouched, per-element backups are written first, and re-running only picks up missing or changed values.'|t('link-migrator') }}
           <strong>{{ '{ready} of {total} verified and ready to finalize.'|t('link-migrator', { ready: readyCount, total: totalFields }) }}</strong>
         </p>
-        <form method="post" onsubmit="return confirm({{ 'This will write native Link content for all prepared fields (with backups). Continue?'|t('link-migrator')|json_encode }});">
+        <form method="post" onsubmit="return confirm({{ 'This will write native Link content for all prepared fields (with backups). Continue?'|t('link-migrator')|json_encode|raw }});">
           {{ csrfInput() }}
           {{ actionInput('link-migrator/wizard/migrate-content') }}
           <button class="btn submit">{{ 'Migrate content'|t('link-migrator') }}</button>
@@ -111,7 +111,7 @@
         <p>
           {{ 'Removes the Hyper fields from all field layouts, leaving the native Link fields in place. Before cutting over, every value is re-verified against live content (presence and link type) — finalize refuses if anything is unverified. Hyper fields themselves are not deleted.'|t('link-migrator') }}
         </p>
-        <form method="post" onsubmit="return confirm({{ 'This will remove Hyper fields from your field layouts. Make sure your templates are updated. Continue?'|t('link-migrator')|json_encode }});">
+        <form method="post" onsubmit="return confirm({{ 'This will remove Hyper fields from your field layouts. Make sure your templates are updated. Continue?'|t('link-migrator')|json_encode|raw }});">
           {{ csrfInput() }}
           {{ actionInput('link-migrator/wizard/finalize') }}
           {% if mismatchCount > 0 %}

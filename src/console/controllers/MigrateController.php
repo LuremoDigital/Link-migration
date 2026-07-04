@@ -162,18 +162,9 @@ class MigrateController extends Controller
     public function actionMismatches(): int
     {
         $plugin = LinkMigrator::$plugin;
-        $report = $plugin->getReport()->beginRun('mismatches');
+        $report = $plugin->getReport()->beginRun('mismatches', $this->dryRun);
         $audit = $plugin->getAudit()->buildAudit($this->field);
-
-        $payload = [
-            'summary' => [
-                'mismatches' => count($audit->mismatchReferences),
-            ],
-            'mismatches' => $audit->mismatchReferences,
-        ];
-
-        file_put_contents($report->jsonPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
-        file_put_contents($report->reportPath, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL);
+        $plugin->getReport()->writeMismatches($report, $audit);
 
         $this->stdout(sprintf("Potential Hyper API mismatches: %d\n", count($audit->mismatchReferences)), Console::FG_YELLOW);
 
@@ -197,7 +188,7 @@ class MigrateController extends Controller
     private function runAuditStage(): array
     {
         $plugin = LinkMigrator::$plugin;
-        $report = $plugin->getReport()->beginRun('audit');
+        $report = $plugin->getReport()->beginRun('audit', $this->dryRun);
         $audit = $plugin->getAudit()->buildAudit($this->field);
         $plugin->getReport()->writeAudit($report, $audit, $this);
         $this->stdout("Audit written to {$report->reportPath}\n", Console::FG_GREEN);

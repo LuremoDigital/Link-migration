@@ -125,6 +125,18 @@ class ReportService extends Component
         $controller?->stdout($this->renderSummary($payload['summary']));
     }
 
+    public function writeMismatches(MigrationReport $report, AuditResult $audit): void
+    {
+        $payload = [
+            'summary' => [
+                'mismatches' => count($audit->mismatchReferences),
+            ],
+            'mismatches' => $audit->mismatchReferences,
+        ];
+
+        $this->persist($report, $payload);
+    }
+
     public function writeCutoverResult(MigrationReport $report, CutoverResult $result, ?Controller $controller = null): void
     {
         $payload = [
