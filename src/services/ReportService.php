@@ -1,15 +1,15 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
 use craft\console\Controller;
-use lm2k\hypertolink\models\AuditResult;
-use lm2k\hypertolink\models\ContentMigrationResult;
-use lm2k\hypertolink\models\CutoverResult;
-use lm2k\hypertolink\models\FieldMigrationResult;
-use lm2k\hypertolink\models\MigrationReport;
+use luremo\linkmigrator\models\AuditResult;
+use luremo\linkmigrator\models\ContentMigrationResult;
+use luremo\linkmigrator\models\CutoverResult;
+use luremo\linkmigrator\models\FieldMigrationResult;
+use luremo\linkmigrator\models\MigrationReport;
 
 class ReportService extends Component
 {

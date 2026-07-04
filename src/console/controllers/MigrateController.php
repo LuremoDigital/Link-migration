@@ -1,11 +1,11 @@
 <?php
 
-namespace lm2k\hypertolink\console\controllers;
+namespace luremo\linkmigrator\console\controllers;
 
 use craft\console\Controller;
 use craft\helpers\Console;
-use lm2k\hypertolink\HyperToLink;
-use lm2k\hypertolink\models\AuditResult;
+use luremo\linkmigrator\LinkMigrator;
+use luremo\linkmigrator\models\AuditResult;
 use yii\console\ExitCode;
 
 class MigrateController extends Controller
@@ -51,12 +51,6 @@ class MigrateController extends Controller
         return $exitCode;
     }
 
-    public function actionFields(): int
-    {
-        $this->stderr("`fields` is deprecated. Use `prepare-fields`.\n", Console::FG_RED);
-        return ExitCode::UNSPECIFIED_ERROR;
-    }
-
     public function actionPrepareFields(): int
     {
         if (!$this->dryRun && !$this->force) {
@@ -79,18 +73,9 @@ class MigrateController extends Controller
         return $exitCode;
     }
 
-    public function actionAll(): int
-    {
-        $this->stderr(
-            "`all` is no longer part of the recommended production workflow. Run `audit`, `prepare-fields`, `content`, and `finalize` explicitly.\n",
-            Console::FG_RED
-        );
-        return ExitCode::UNSPECIFIED_ERROR;
-    }
-
     public function actionStatus(): int
     {
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
         $audit = $plugin->getAudit()->buildAudit($this->field);
 
         $statuses = $plugin->getState()->workflowStatuses($audit, $this->field);
@@ -122,7 +107,7 @@ class MigrateController extends Controller
             return ExitCode::UNSPECIFIED_ERROR;
         }
 
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
         $report = $plugin->getReport()->beginRun('finalize');
         $audit = $plugin->getAudit()->buildAudit($this->field);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'finalize cutover');
@@ -154,7 +139,7 @@ class MigrateController extends Controller
 
     public function actionRollbackInfo(): int
     {
-        $records = HyperToLink::$plugin->getState()->summaries($this->field);
+        $records = LinkMigrator::$plugin->getState()->summaries($this->field);
         $this->stdout("Rollback information is informational only. Hyper is intentionally left installed.\n\n", Console::FG_YELLOW);
 
         foreach ($records as $record) {
@@ -176,7 +161,7 @@ class MigrateController extends Controller
 
     public function actionMismatches(): int
     {
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
         $report = $plugin->getReport()->beginRun('mismatches');
         $audit = $plugin->getAudit()->buildAudit($this->field);
 
@@ -211,7 +196,7 @@ class MigrateController extends Controller
 
     private function runAuditStage(): array
     {
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
         $report = $plugin->getReport()->beginRun('audit');
         $audit = $plugin->getAudit()->buildAudit($this->field);
         $plugin->getReport()->writeAudit($report, $audit, $this);
@@ -222,7 +207,7 @@ class MigrateController extends Controller
 
     private function runFieldStage(?AuditResult $audit = null): array
     {
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
         $report = $plugin->getReport()->beginRun('prepare-fields');
         $plugin->getReport()->writePreflight($report, $audit, $this, 'prepare native fields');
@@ -242,7 +227,7 @@ class MigrateController extends Controller
 
     private function runContentStage(?AuditResult $audit = null): array
     {
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
         $audit ??= $plugin->getAudit()->buildAudit($this->field);
         $report = $plugin->getReport()->beginRun('content');
         $plugin->getReport()->writePreflight($report, $audit, $this, 'content migration');

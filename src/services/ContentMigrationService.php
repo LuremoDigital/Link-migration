@@ -1,6 +1,6 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
@@ -10,12 +10,12 @@ use craft\elements\Asset;
 use craft\elements\Category;
 use craft\elements\Entry;
 use craft\elements\db\ElementQuery;
-use lm2k\hypertolink\HyperToLink;
-use lm2k\hypertolink\models\AuditResult;
-use lm2k\hypertolink\models\ContentMigrationResult;
-use lm2k\hypertolink\models\FieldAudit;
-use lm2k\hypertolink\models\FieldMapping;
-use lm2k\hypertolink\models\MappingDecision;
+use luremo\linkmigrator\LinkMigrator;
+use luremo\linkmigrator\models\AuditResult;
+use luremo\linkmigrator\models\ContentMigrationResult;
+use luremo\linkmigrator\models\FieldAudit;
+use luremo\linkmigrator\models\FieldMapping;
+use luremo\linkmigrator\models\MappingDecision;
 
 class ContentMigrationService extends Component
 {
@@ -39,7 +39,7 @@ class ContentMigrationService extends Component
                 continue;
             }
 
-            $fieldMapping = HyperToLink::$plugin->getState()->getFieldMapping($fieldAudit->uid);
+            $fieldMapping = LinkMigrator::$plugin->getState()->getFieldMapping($fieldAudit->uid);
             if (!$fieldMapping?->targetHandle) {
                 $result->recordError([
                     'field' => $fieldAudit->handle,
@@ -129,7 +129,7 @@ class ContentMigrationService extends Component
 
                             $backupPath = null;
                             if (empty($options['dryRun']) && !empty($options['createBackup'])) {
-                                $backupPath = HyperToLink::$plugin->getState()->writeBackup('content', $fieldAudit->handle, $element, $conversion['backup']);
+                                $backupPath = LinkMigrator::$plugin->getState()->writeBackup('content', $fieldAudit->handle, $element, $conversion['backup']);
                                 $result->addBackup($backupPath);
                             }
 
@@ -150,7 +150,7 @@ class ContentMigrationService extends Component
                                 throw new \RuntimeException('saveElement() returned false.');
                             }
 
-                            HyperToLink::$plugin->getState()->markMigrated(
+                            LinkMigrator::$plugin->getState()->markMigrated(
                                 'content',
                                 $fieldAudit->handle,
                                 $fieldAudit->uid,
@@ -169,7 +169,7 @@ class ContentMigrationService extends Component
                         } catch (\Throwable $e) {
                             $fieldHadErrors = true;
                             if (empty($options['dryRun']) && $element instanceof ElementInterface) {
-                                HyperToLink::$plugin->getState()->markError('content', $fieldAudit->handle, $fieldAudit->uid, $element, $e->getMessage());
+                                LinkMigrator::$plugin->getState()->markError('content', $fieldAudit->handle, $fieldAudit->uid, $element, $e->getMessage());
                             }
                             $result->recordError([
                                 'field' => $fieldAudit->handle,
@@ -189,7 +189,7 @@ class ContentMigrationService extends Component
                 // (which recomputes the same reconciliation) refuses cutover.
                 $reconciliation = $this->reconcileField($fieldAudit, $fieldMapping->targetHandle);
                 $readyToFinalize = !$fieldHadErrors && $reconciliation['unverified'] === [];
-                HyperToLink::$plugin->getState()->markContentMigrated($fieldAudit->uid, $readyToFinalize);
+                LinkMigrator::$plugin->getState()->markContentMigrated($fieldAudit->uid, $readyToFinalize);
             }
         }
 
@@ -420,7 +420,7 @@ class ContentMigrationService extends Component
     private function primeBatchCaches(FieldAudit $fieldAudit, array $batch): void
     {
         $this->rawContentCache = [];
-        $this->migratedStateCache = HyperToLink::$plugin->getState()->migratedMap('content', $fieldAudit->uid, $batch);
+        $this->migratedStateCache = LinkMigrator::$plugin->getState()->migratedMap('content', $fieldAudit->uid, $batch);
 
         $condition = $this->buildElementSiteCondition($batch);
         if ($condition === null) {
@@ -600,7 +600,7 @@ class ContentMigrationService extends Component
         string $reason
     ): void {
         if (empty($options['dryRun'])) {
-            HyperToLink::$plugin->getState()->markSkipped('content', $fieldAudit->handle, $fieldAudit->uid, $element, $reason);
+            LinkMigrator::$plugin->getState()->markSkipped('content', $fieldAudit->handle, $fieldAudit->uid, $element, $reason);
         }
 
         $result->addSkipped([
@@ -619,7 +619,7 @@ class ContentMigrationService extends Component
         array $backup
     ): void {
         if (empty($options['dryRun'])) {
-            HyperToLink::$plugin->getState()->markWarning('content', $fieldAudit->handle, $fieldAudit->uid, $element, $warnings, $backup);
+            LinkMigrator::$plugin->getState()->markWarning('content', $fieldAudit->handle, $fieldAudit->uid, $element, $warnings, $backup);
         }
 
         $result->addWarning([

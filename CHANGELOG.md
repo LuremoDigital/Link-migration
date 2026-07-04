@@ -1,10 +1,13 @@
 # Changelog
 
-## 1.0.0 - 2026-03-11
+## 1.0.0 - 2026-07-04
 
 ### Added
 
-- Initial public release of Link Migrator for Craft CMS 5.
-- CLI audit, field migration, content migration, and rollback-info commands.
-- Dry-run support, resumable migration state tracking, JSON/log reports, and optional per-element backups.
-- Template migration guidance for projects moving from Verbb Hyper to native Link fields.
+- Initial release of Link Migrator for Craft CMS 5.
+- Staged migration workflow from Verbb Hyper to Craft's native Link field: audit, prepare-fields, content, and finalize.
+- Control Panel wizard with per-field workflow status (admin-only).
+- CLI commands with dry-run support; write commands require `--force=1`.
+- Fresh content reconciliation gating finalize — cutover is refused while any non-empty source value is unverified.
+- Template mismatch scanner (`migrate/mismatches`) with a finalize acknowledgement gate.
+- Resumable migration state keyed by source field UID, with JSON/log reports and optional per-element backups.

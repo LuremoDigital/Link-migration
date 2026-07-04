@@ -1,6 +1,6 @@
 <?php
 
-namespace lm2k\hypertolink\migrations;
+namespace luremo\linkmigrator\migrations;
 
 use craft\db\Migration;
 

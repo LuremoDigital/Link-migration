@@ -1,6 +1,6 @@
 <?php
 
-namespace lm2k\hypertolink;
+namespace luremo\linkmigrator;
 
 use Craft;
 use craft\base\Plugin;
@@ -8,21 +8,21 @@ use craft\console\Application as ConsoleApplication;
 use craft\events\RegisterUrlRulesEvent;
 use craft\web\UrlManager;
 use yii\base\Event;
-use lm2k\hypertolink\services\AuditService;
-use lm2k\hypertolink\services\ContentMigrationService;
-use lm2k\hypertolink\services\CutoverService;
-use lm2k\hypertolink\services\FieldMigrationService;
-use lm2k\hypertolink\services\MappingStrategyService;
-use lm2k\hypertolink\services\ReportService;
-use lm2k\hypertolink\services\StateService;
+use luremo\linkmigrator\services\AuditService;
+use luremo\linkmigrator\services\ContentMigrationService;
+use luremo\linkmigrator\services\CutoverService;
+use luremo\linkmigrator\services\FieldMigrationService;
+use luremo\linkmigrator\services\MappingStrategyService;
+use luremo\linkmigrator\services\ReportService;
+use luremo\linkmigrator\services\StateService;
 
-class HyperToLink extends Plugin
+class LinkMigrator extends Plugin
 {
     public const HANDLE = 'link-migrator';
 
     public bool $hasCpSettings = false;
     public bool $hasCpSection = true;
-    public string $schemaVersion = '1.1.0';
+    public string $schemaVersion = '1.2.0';
 
     public static self $plugin;
 
@@ -42,16 +42,13 @@ class HyperToLink extends Plugin
         ]);
 
         if (Craft::$app instanceof ConsoleApplication) {
-            $this->controllerNamespace = 'lm2k\\hypertolink\\console\\controllers';
+            $this->controllerNamespace = 'luremo\\linkmigrator\\console\\controllers';
         } else {
             Event::on(
                 UrlManager::class,
                 UrlManager::EVENT_REGISTER_CP_URL_RULES,
                 static function(RegisterUrlRulesEvent $event) {
                     $event->rules[static::HANDLE] = static::HANDLE . '/wizard/index';
-                    $event->rules[static::HANDLE . '/prepare'] = static::HANDLE . '/wizard/prepare-fields';
-                    $event->rules[static::HANDLE . '/content'] = static::HANDLE . '/wizard/migrate-content';
-                    $event->rules[static::HANDLE . '/finalize'] = static::HANDLE . '/wizard/finalize';
                 }
             );
         }

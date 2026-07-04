@@ -1,22 +1,32 @@
 <?php
 
-namespace lm2k\hypertolink\controllers;
+namespace luremo\linkmigrator\controllers;
 
 use Craft;
 use craft\web\Controller;
-use lm2k\hypertolink\HyperToLink;
+use luremo\linkmigrator\LinkMigrator;
 use yii\web\Response;
 
 class WizardController extends Controller
 {
     protected array|bool|int $allowAnonymous = false;
 
+    public function beforeAction($action): bool
+    {
+        // The wizard creates fields, writes content, and mutates field layouts,
+        // so it is admin-only. Prepare and finalize also change project config,
+        // which requireAdmin() additionally guards via allowAdminChanges.
+        $this->requireAdmin(in_array($action->id, ['prepare-fields', 'finalize'], true));
+
+        return parent::beforeAction($action);
+    }
+
     public function actionIndex(): Response
     {
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
         $audit = $plugin->getAudit()->buildAudit();
 
-        return $this->renderTemplate(HyperToLink::HANDLE . '/index', [
+        return $this->renderTemplate(LinkMigrator::HANDLE . '/index', [
             'plugin' => $plugin,
             'audit' => $audit,
             'statuses' => $plugin->getState()->workflowStatuses($audit),
@@ -26,7 +36,7 @@ class WizardController extends Controller
     public function actionPrepareFields(): Response
     {
         $this->requirePostRequest();
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
 
         try {
             $audit = $plugin->getAudit()->buildAudit();
@@ -41,13 +51,13 @@ class WizardController extends Controller
             Craft::$app->getSession()->setFlash('error', $e->getMessage());
         }
 
-        return $this->redirect(HyperToLink::HANDLE);
+        return $this->redirect(LinkMigrator::HANDLE);
     }
 
     public function actionMigrateContent(): Response
     {
         $this->requirePostRequest();
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
 
         try {
             $audit = $plugin->getAudit()->buildAudit();
@@ -67,13 +77,13 @@ class WizardController extends Controller
             Craft::$app->getSession()->setFlash('error', $e->getMessage());
         }
 
-        return $this->redirect(HyperToLink::HANDLE);
+        return $this->redirect(LinkMigrator::HANDLE);
     }
 
     public function actionFinalize(): Response
     {
         $this->requirePostRequest();
-        $plugin = HyperToLink::$plugin;
+        $plugin = LinkMigrator::$plugin;
 
         try {
             $audit = $plugin->getAudit()->buildAudit();
@@ -87,7 +97,7 @@ class WizardController extends Controller
                     '%d unreviewed template mismatch(es) found. Review them and confirm before finalizing.',
                     $mismatchCount
                 ));
-                return $this->redirect(HyperToLink::HANDLE);
+                return $this->redirect(LinkMigrator::HANDLE);
             }
 
             $result = $plugin->getCutover()->finalize($audit, ['dryRun' => false, 'force' => true]);
@@ -101,6 +111,6 @@ class WizardController extends Controller
             Craft::$app->getSession()->setFlash('error', $e->getMessage());
         }
 
-        return $this->redirect(HyperToLink::HANDLE);
+        return $this->redirect(LinkMigrator::HANDLE);
     }
 }

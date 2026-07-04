@@ -1,6 +1,6 @@
 <?php
 
-namespace lm2k\hypertolink\records;
+namespace luremo\linkmigrator\records;
 
 use craft\db\ActiveRecord;
 

@@ -1,15 +1,15 @@
 <?php
 
-namespace lm2k\hypertolink\services;
+namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
 use craft\fields\Link;
 use craft\fieldlayoutelements\CustomField;
-use lm2k\hypertolink\HyperToLink;
-use lm2k\hypertolink\models\AuditResult;
-use lm2k\hypertolink\models\FieldMigrationResult;
-use lm2k\hypertolink\models\MappingDecision;
+use luremo\linkmigrator\LinkMigrator;
+use luremo\linkmigrator\models\AuditResult;
+use luremo\linkmigrator\models\FieldMigrationResult;
+use luremo\linkmigrator\models\MappingDecision;
 
 class FieldMigrationService extends Component
 {
@@ -37,7 +37,7 @@ class FieldMigrationService extends Component
                     continue;
                 }
 
-                $existingMapping = HyperToLink::$plugin->getState()->getFieldMapping($fieldAudit->uid);
+                $existingMapping = LinkMigrator::$plugin->getState()->getFieldMapping($fieldAudit->uid);
                 if ($existingMapping?->targetHandle) {
                     $mappedField = $fieldsService->getFieldByHandle($existingMapping->targetHandle);
                     if ($mappedField instanceof Link) {
@@ -79,7 +79,7 @@ class FieldMigrationService extends Component
                 }
 
                 $this->attachPreparedFieldToLayouts($existing, $persistedTargetField);
-                $mapping = HyperToLink::$plugin->getState()->savePreparedFieldMapping([
+                $mapping = LinkMigrator::$plugin->getState()->savePreparedFieldMapping([
                     'sourceFieldId' => (int)$existing->id,
                     'sourceFieldUid' => (string)$existing->uid,
                     'sourceHandle' => (string)$existing->handle,
