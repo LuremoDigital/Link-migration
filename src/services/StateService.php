@@ -13,26 +13,13 @@ use lm2k\hypertolink\records\MigrationRecord;
 
 class StateService extends Component
 {
-    public function syncAuditedFields(AuditResult $audit): void
+    public function getFieldMapping(string $sourceFieldUid): ?FieldMapping
     {
-        foreach ($audit->fields as $fieldAudit) {
-            $record = FieldMappingRecord::findOne(['sourceFieldUid' => $fieldAudit->uid]);
-            if (!$record) {
-                $record = FieldMappingRecord::findOne(['sourceHandle' => $fieldAudit->handle]);
-            }
-            $record ??= new FieldMappingRecord();
-            $record->sourceFieldId = $fieldAudit->fieldId;
-            $record->sourceFieldUid = $fieldAudit->uid;
-            $record->sourceHandle = $fieldAudit->handle;
-            $record->phase = $record->phase ?: FieldMapping::PHASE_AUDITED;
-            $record->save(false);
-        }
-    }
-
-    public function getFieldMapping(string $sourceHandle): ?FieldMapping
-    {
+        // Resolve by the stable source field UID, not the reusable handle, so a deleted and
+        // recreated field with the same handle cannot inherit the old field's mapping/phase
+        // (finding 6).
         $record = FieldMappingRecord::find()
-            ->where(['sourceHandle' => $sourceHandle])
+            ->where(['sourceFieldUid' => $sourceFieldUid])
             ->orderBy([
                 'targetHandle' => SORT_DESC,
                 'preparedAt' => SORT_DESC,
@@ -75,9 +62,9 @@ class StateService extends Component
         return $this->toFieldMapping($record);
     }
 
-    public function markContentMigrated(string $sourceHandle, bool $readyToFinalize = true): void
+    public function markContentMigrated(string $sourceFieldUid, bool $readyToFinalize = true): void
     {
-        $record = FieldMappingRecord::findOne(['sourceHandle' => $sourceHandle]);
+        $record = FieldMappingRecord::findOne(['sourceFieldUid' => $sourceFieldUid]);
         if (!$record) {
             return;
         }
@@ -87,9 +74,9 @@ class StateService extends Component
         $record->save(false);
     }
 
-    public function markFinalized(string $sourceHandle): void
+    public function markFinalized(string $sourceFieldUid): void
     {
-        $record = FieldMappingRecord::findOne(['sourceHandle' => $sourceHandle]);
+        $record = FieldMappingRecord::findOne(['sourceFieldUid' => $sourceFieldUid]);
         if (!$record) {
             return;
         }
@@ -99,20 +86,7 @@ class StateService extends Component
         $record->save(false);
     }
 
-    public function isMigrated(string $action, string $fieldHandle, ElementInterface $element): bool
-    {
-        return MigrationRecord::find()
-            ->where([
-                'action' => $action,
-                'fieldHandle' => $fieldHandle,
-                'ownerId' => $element->id,
-                'siteId' => $element->siteId,
-                'status' => 'migrated',
-            ])
-            ->exists();
-    }
-
-    public function migratedMap(string $action, string $fieldHandle, array $elements): array
+    public function migratedMap(string $action, string $sourceFieldUid, array $elements): array
     {
         $ownerIds = [];
         $siteIds = [];
@@ -134,7 +108,7 @@ class StateService extends Component
             ->select(['ownerId', 'siteId'])
             ->where([
                 'action' => $action,
-                'fieldHandle' => $fieldHandle,
+                'sourceFieldUid' => $sourceFieldUid,
                 'status' => 'migrated',
                 'ownerId' => array_keys($ownerIds),
                 'siteId' => array_keys($siteIds),
@@ -153,33 +127,35 @@ class StateService extends Component
     public function markMigrated(
         string $action,
         string $fieldHandle,
+        string $sourceFieldUid,
         ElementInterface $element,
         array $warnings = [],
         array $backup = [],
         ?string $backupPath = null
     ): void
     {
-        $this->saveRecord($action, $fieldHandle, $element, 'migrated', $warnings, $backup, $backupPath);
+        $this->saveRecord($action, $fieldHandle, $sourceFieldUid, $element, 'migrated', $warnings, $backup, $backupPath);
     }
 
-    public function markSkipped(string $action, string $fieldHandle, ElementInterface $element, string $reason): void
+    public function markSkipped(string $action, string $fieldHandle, string $sourceFieldUid, ElementInterface $element, string $reason): void
     {
-        $this->saveRecord($action, $fieldHandle, $element, 'skipped', [$reason], [], null);
+        $this->saveRecord($action, $fieldHandle, $sourceFieldUid, $element, 'skipped', [$reason], [], null);
     }
 
-    public function markWarning(string $action, string $fieldHandle, ElementInterface $element, array $warnings, array $backup = []): void
+    public function markWarning(string $action, string $fieldHandle, string $sourceFieldUid, ElementInterface $element, array $warnings, array $backup = []): void
     {
-        $this->saveRecord($action, $fieldHandle, $element, 'warning', $warnings, $backup, null);
+        $this->saveRecord($action, $fieldHandle, $sourceFieldUid, $element, 'warning', $warnings, $backup, null);
     }
 
     public function markError(
         string $action,
         string $fieldHandle,
+        string $sourceFieldUid,
         ElementInterface $element,
         string $reason,
         array $backup = []
     ): void {
-        $this->saveRecord($action, $fieldHandle, $element, 'error', [$reason], $backup, null);
+        $this->saveRecord($action, $fieldHandle, $sourceFieldUid, $element, 'error', [$reason], $backup, null);
     }
 
     public function writeBackup(string $action, string $fieldHandle, ElementInterface $element, array $backup): string
@@ -280,15 +256,17 @@ class StateService extends Component
     private function saveRecord(
         string $action,
         string $fieldHandle,
+        string $sourceFieldUid,
         ElementInterface $element,
         string $status,
         array $warnings,
         array $backup,
         ?string $backupPath
     ): void {
+        // Identity is the stable source field UID, not the reusable handle (finding 6).
         $record = MigrationRecord::findOne([
             'action' => $action,
-            'fieldHandle' => $fieldHandle,
+            'sourceFieldUid' => $sourceFieldUid,
             'ownerId' => $element->id,
             'siteId' => $element->siteId,
         ]) ?? new MigrationRecord();
@@ -299,6 +277,7 @@ class StateService extends Component
 
         $record->action = $action;
         $record->fieldHandle = $fieldHandle;
+        $record->sourceFieldUid = $sourceFieldUid;
         $record->ownerId = $element->id;
         $record->siteId = $element->siteId;
         $record->ownerUid = $element->uid;
@@ -315,17 +294,15 @@ class StateService extends Component
             return true;
         }
 
-        if ($existingStatus === $incomingStatus) {
-            return true;
+        // The only non-authoritative outcome is a "skipped" status, which a re-run records
+        // for units it deliberately leaves alone (e.g. "Already migrated."). It must never
+        // downgrade a confirmed migration. Every other status reflects what the current run
+        // actually observed for this unit, so the latest outcome wins — including a later
+        // warning or error that supersedes an earlier success (finding 7).
+        if ($incomingStatus === 'skipped' && $existingStatus === 'migrated') {
+            return false;
         }
 
-        $priority = [
-            'skipped' => 1,
-            'warning' => 2,
-            'error' => 3,
-            'migrated' => 4,
-        ];
-
-        return ($priority[$incomingStatus] ?? 0) >= ($priority[$existingStatus] ?? 0);
+        return true;
     }
 }

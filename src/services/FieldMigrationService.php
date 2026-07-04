@@ -37,9 +37,9 @@ class FieldMigrationService extends Component
                     continue;
                 }
 
-                $existingMapping = HyperToLink::$plugin->getState()->getFieldMapping($fieldAudit->handle);
+                $existingMapping = HyperToLink::$plugin->getState()->getFieldMapping($fieldAudit->uid);
                 if ($existingMapping?->targetHandle) {
-                    $mappedField = $this->findFieldByHandle($existingMapping->targetHandle);
+                    $mappedField = $fieldsService->getFieldByHandle($existingMapping->targetHandle);
                     if ($mappedField instanceof Link) {
                         $result->skipped[] = [
                             'field' => $fieldAudit->handle,
@@ -70,7 +70,7 @@ class FieldMigrationService extends Component
                     throw new \RuntimeException('saveField() returned false.');
                 }
 
-                $persistedTargetField = $this->findFieldByHandle($targetHandle);
+                $persistedTargetField = $fieldsService->getFieldByHandle($targetHandle);
                 if (!$persistedTargetField instanceof Link || empty($persistedTargetField->id)) {
                     throw new \RuntimeException(sprintf(
                         'Prepared field `%s` was not persisted correctly.',
@@ -141,23 +141,12 @@ class FieldMigrationService extends Component
         return property_exists(Link::class, 'advancedFields');
     }
 
-    private function findFieldByHandle(string $handle): ?object
-    {
-        foreach (Craft::$app->getFields()->getAllFields(false) as $field) {
-            if ((string)$field->handle === $handle) {
-                return $field;
-            }
-        }
-
-        return null;
-    }
-
     private function nextAvailableHandle(string $baseHandle): string
     {
         $candidate = $baseHandle;
         $suffix = 2;
 
-        while ($this->findFieldByHandle($candidate) !== null) {
+        while (Craft::$app->getFields()->getFieldByHandle($candidate) !== null) {
             $candidate = $baseHandle . $suffix;
             $suffix++;
         }

@@ -6,36 +6,31 @@
 {% block content %}
   <div class="readable">
     <h1>Hyper to Link staged migration</h1>
-    <p>
-      Edition: <strong>{{ edition|upper }}</strong>
-      {% if licenseIssues %}
-        <span class="error">{{ licenseIssues|join(', ') }}</span>
-      {% endif %}
-    </p>
 
     <p>
-      This wizard keeps Hyper fields intact, prepares parallel native Link fields, migrates content in batches, and only cuts field layouts over during the final step.
+      This wizard keeps Hyper fields intact. Prepare creates parallel native Link fields and adds them alongside the Hyper fields in every layout that uses them; content is migrated in batches; and the Hyper fields are only removed from layouts during the final cutover step.
     </p>
-
-    {% if writeBlockReason %}
-      <div class="warning">
-        <p>{{ writeBlockReason }}</p>
-      </div>
-    {% endif %}
 
     <div class="buttons" style="margin-bottom: 24px;">
       <a class="btn" href="{{ pluginCpUrl }}">Refresh audit</a>
       <form method="post" action="{{ actionUrl('link-migrator/wizard/prepare-fields') }}" style="display:inline-block;">
         {{ csrfInput() }}
-        <button class="btn submit" {% if not canWrite %}disabled{% endif %}>Step 2: Prepare Native Fields</button>
+        <button class="btn submit">Step 2: Prepare Native Fields</button>
       </form>
       <form method="post" action="{{ actionUrl('link-migrator/wizard/migrate-content') }}" style="display:inline-block;">
         {{ csrfInput() }}
-        <button class="btn submit" {% if not canWrite %}disabled{% endif %}>Step 3: Migrate Content</button>
+        <button class="btn submit">Step 3: Migrate Content</button>
       </form>
       <form method="post" action="{{ actionUrl('link-migrator/wizard/finalize') }}" style="display:inline-block;">
         {{ csrfInput() }}
-        <button class="btn submit" {% if not canWrite %}disabled{% endif %}>Step 5: Finalize</button>
+        {% set mismatchCount = audit.mismatchReferences | length %}
+        {% if mismatchCount > 0 %}
+          <label style="display:block; margin-bottom: 4px;">
+            <input type="checkbox" name="acknowledgeMismatches" value="1">
+            I reviewed the {{ mismatchCount }} template mismatch(es) and want to finalize
+          </label>
+        {% endif %}
+        <button class="btn submit">Step 5: Finalize</button>
       </form>
     </div>
 
@@ -78,6 +73,10 @@
     </table>
 
     <h2>Template impact review</h2>
+    {% set mismatchCount = audit.mismatchReferences | length %}
+    {% if mismatchCount > 0 %}
+      <p><strong>{{ mismatchCount }} potential Hyper API mismatch(es)</strong> were found in templates/modules. Finalize is blocked until you acknowledge them on the Finalize button above.</p>
+    {% endif %}
     <p>Review the CLI mismatch report before finalizing. This release does not rewrite templates automatically.</p>
     <ul>
       <li><code>.text</code> becomes <code>.label</code></li>

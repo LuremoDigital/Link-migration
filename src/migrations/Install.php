@@ -12,6 +12,7 @@ class Install extends Migration
             'id' => $this->primaryKey(),
             'action' => $this->string(32)->notNull(),
             'fieldHandle' => $this->string()->notNull(),
+            'sourceFieldUid' => $this->uid(),
             'ownerId' => $this->integer(),
             'ownerUid' => $this->uid(),
             'siteId' => $this->integer(),
@@ -24,10 +25,11 @@ class Install extends Migration
             'uid' => $this->uid(),
         ]);
 
+        // Identity is the stable source field UID, not the reusable handle (finding 6).
         $this->createIndex(
             null,
             '{{%linkmigrator_migrations}}',
-            ['action', 'fieldHandle', 'ownerId', 'siteId'],
+            ['action', 'sourceFieldUid', 'ownerId', 'siteId'],
             true
         );
 

@@ -28,37 +28,56 @@ class CutoverService extends Component
             }
 
             try {
-                $mapping = HyperToLink::$plugin->getState()->getFieldMapping($fieldAudit->handle);
+                $mapping = HyperToLink::$plugin->getState()->getFieldMapping($fieldAudit->uid);
                 if (!$mapping instanceof FieldMapping || !$mapping->targetHandle) {
                     throw new \RuntimeException('Field has not been prepared.');
                 }
 
-                if (!$mapping->isContentReady()) {
-                    throw new \RuntimeException('Content migration has not completed for this field.');
-                }
-
-                $targetField = $this->findFieldByHandle($mapping->targetHandle);
+                $targetField = Craft::$app->getFields()->getFieldByHandle($mapping->targetHandle);
                 $sourceField = $fieldsService->getFieldById($fieldAudit->fieldId);
                 if (!$sourceField || !$targetField) {
                     throw new \RuntimeException('Source or target field could not be loaded.');
                 }
+
+                // Recompute reconciliation fresh. The stored workflow phase is not trusted:
+                // every non-empty source value must have a verified native value before cutover.
+                $reconciliation = HyperToLink::$plugin->getContentMigration()
+                    ->reconcileField($fieldAudit, $mapping->targetHandle);
+
+                if ($reconciliation['unverified'] !== []) {
+                    throw new \RuntimeException(sprintf(
+                        'Refusing to finalize `%s`: %d of %d source value(s) are not verified on native field `%s`. Run content migration until every non-empty value is migrated.',
+                        $fieldAudit->handle,
+                        count($reconciliation['unverified']),
+                        $reconciliation['total'],
+                        $mapping->targetHandle
+                    ));
+                }
+
+                $reconciliationSummary = [
+                    'total' => $reconciliation['total'],
+                    'verified' => $reconciliation['verified'],
+                    'empty' => $reconciliation['empty'],
+                ];
 
                 if (!empty($options['dryRun'])) {
                     $result->finalized[] = [
                         'field' => $fieldAudit->handle,
                         'target' => $mapping->targetHandle,
                         'mode' => 'dry-run',
+                        'reconciliation' => $reconciliationSummary,
                     ];
                     continue;
                 }
 
                 $this->replaceFieldInLayouts($sourceField, $targetField);
-                HyperToLink::$plugin->getState()->markFinalized($fieldAudit->handle);
+                HyperToLink::$plugin->getState()->markFinalized($fieldAudit->uid);
 
                 $result->finalized[] = [
                     'field' => $fieldAudit->handle,
                     'target' => $mapping->targetHandle,
                     'mode' => 'write',
+                    'reconciliation' => $reconciliationSummary,
                 ];
             } catch (\Throwable $e) {
                 $result->errors[] = [
@@ -117,16 +136,5 @@ class CutoverService extends Component
 
             $fieldsService->saveLayout($layout);
         }
-    }
-
-    private function findFieldByHandle(string $handle): ?object
-    {
-        foreach (Craft::$app->getFields()->getAllFields(false) as $field) {
-            if ((string)$field->handle === $handle) {
-                return $field;
-            }
-        }
-
-        return null;
     }
 }

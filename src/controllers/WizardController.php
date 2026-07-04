@@ -15,16 +15,11 @@ class WizardController extends Controller
     {
         $plugin = HyperToLink::$plugin;
         $audit = $plugin->getAudit()->buildAudit();
-        $plugin->getState()->syncAuditedFields($audit);
 
         return $this->renderTemplate(HyperToLink::HANDLE . '/index', [
             'plugin' => $plugin,
             'audit' => $audit,
             'statuses' => $plugin->getState()->workflowStatuses($audit),
-            'canWrite' => $plugin->getLicense()->canWrite(),
-            'edition' => $plugin->getLicense()->currentEdition(),
-            'licenseIssues' => $plugin->getLicense()->issues(),
-            'writeBlockReason' => $plugin->getLicense()->writeBlockReason(),
         ]);
     }
 
@@ -34,9 +29,7 @@ class WizardController extends Controller
         $plugin = HyperToLink::$plugin;
 
         try {
-            $plugin->getLicense()->requireWriteAccess(false);
             $audit = $plugin->getAudit()->buildAudit();
-            $plugin->getState()->syncAuditedFields($audit);
             $result = $plugin->getFieldMigration()->migrate($audit, ['dryRun' => false, 'force' => true]);
 
             if ($result->hasErrors()) {
@@ -57,9 +50,7 @@ class WizardController extends Controller
         $plugin = HyperToLink::$plugin;
 
         try {
-            $plugin->getLicense()->requireWriteAccess(false);
             $audit = $plugin->getAudit()->buildAudit();
-            $plugin->getState()->syncAuditedFields($audit);
             $result = $plugin->getContentMigration()->migrate($audit, [
                 'dryRun' => false,
                 'force' => true,
@@ -85,9 +76,20 @@ class WizardController extends Controller
         $plugin = HyperToLink::$plugin;
 
         try {
-            $plugin->getLicense()->requireWriteAccess(false);
             $audit = $plugin->getAudit()->buildAudit();
-            $plugin->getState()->syncAuditedFields($audit);
+
+            // Mirror the CLI mismatch gate (finding 9): cutover breaks templates that still use
+            // Hyper-only APIs, so require an explicit acknowledgement when mismatches exist.
+            $mismatchCount = count($audit->mismatchReferences);
+            $acknowledged = (bool)Craft::$app->getRequest()->getBodyParam('acknowledgeMismatches');
+            if ($mismatchCount > 0 && !$acknowledged) {
+                Craft::$app->getSession()->setFlash('error', sprintf(
+                    '%d unreviewed template mismatch(es) found. Review them and confirm before finalizing.',
+                    $mismatchCount
+                ));
+                return $this->redirect(HyperToLink::HANDLE);
+            }
+
             $result = $plugin->getCutover()->finalize($audit, ['dryRun' => false, 'force' => true]);
 
             if ($result->hasErrors()) {
