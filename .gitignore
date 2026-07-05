@@ -6,6 +6,7 @@ composer.lock
 Thumbs.db
 .claude/
 .codex/
+.phpunit.cache/
 AGENTS.md
 TODOS.md
 docs/migration-demo-findings.md
