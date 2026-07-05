@@ -4,7 +4,7 @@
 
 # Link Migrator
 
-Move Verbb Hyper fields and content to Craft CMS native Link fields through a staged, reviewable migration.
+Move Verbb Hyper fields and content to Craft CMS native Link fields with a guided Control Panel workflow.
 
 ![Craft CMS 5.x](https://img.shields.io/badge/Craft%20CMS-5.3%2B-e5422b?logo=craftcms&logoColor=white)
 ![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4?logo=php&logoColor=white)
@@ -13,21 +13,22 @@ Move Verbb Hyper fields and content to Craft CMS native Link fields through a st
 
 ---
 
-**Link Migrator** gives Craft teams a controlled path from [Verbb Hyper](https://plugins.craftcms.com/hyper) to Craft's native Link field. It audits the site first, creates parallel native fields, migrates content in resumable batches, and changes field layouts only after the migrated values have been verified.
+**Link Migrator** gives Craft teams a guided path from [Verbb Hyper](https://plugins.craftcms.com/hyper) to Craft's native Link field. Start in the Craft Control Panel, review the audit, prepare parallel native fields, migrate content with backups, review template impact, and finalize the layout cutover when everything is ready.
 
-The original Hyper fields and values remain intact throughout the migration. Every CLI write requires an explicit `--force=1`, and each migration stage produces reports you can inspect before continuing.
+The original Hyper fields and values remain intact throughout the migration. Control Panel write actions require explicit confirmation, CLI write commands require `--force=1`, and each migration stage produces reports you can inspect before continuing.
 
 Link Migrator is an independent product and is not affiliated with Verbb. Hyper is a plugin by Verbb.
 
 ## Features
 
+- **Control Panel first**: follow the guided Craft CP wizard from audit to finalization.
 - **Audit before writing**: inspect Hyper fields, supported mappings, lossy cases, and template API mismatches.
 - **Keep source data intact**: prepare parallel native Link fields instead of replacing Hyper fields in place.
 - **Migrate safely**: process content in batches, resume interrupted runs, and optionally back up each source value.
 - **Verify before cutover**: re-read migrated content and refuse finalization while non-empty source values remain unverified.
 - **Review template impact**: find common Hyper-only properties and methods that need updating.
 - **Track every run**: write human-readable logs and JSON reports to Craft's runtime storage.
-- **Use the Control Panel or CLI**: follow the guided workflow in Craft or run precise commands during deployment.
+- **Automate with the CLI**: run the same staged workflow from deployment scripts when needed.
 
 ## Requirements
 
@@ -47,7 +48,23 @@ php craft plugin/install link-migrator
 
 Link Migrator is a single commercial plugin priced at **$5**. Every feature is included; there are no Lite or Pro editions.
 
-## Quick Start
+## Start in the Control Panel
+
+Open **Link Migrator** in the Craft Control Panel, or go directly to `/admin/link-migrator`.
+
+![Link Migrator Control Panel wizard](docs/img/cp-wizard.png)
+
+The wizard walks through the migration in five stages:
+
+1. **Audit**: read-only scan of Hyper fields, supported mappings, warnings, and template mismatches.
+2. **Prepare native fields**: create native Link fields beside the source Hyper fields. Requires admin access and a confirmation checkbox.
+3. **Migrate content**: copy Hyper values into prepared native fields, write backups, and verify saved values.
+4. **Review template impact**: inspect likely Hyper-only Twig or PHP API usage before cutover.
+5. **Finalize**: remove Hyper fields from field layouts after live content is verified. Hyper fields themselves are not deleted.
+
+For most sites, this is the recommended workflow. Use the CLI when you want dry runs, single-field runs, CI checks, or scripted deployment steps.
+
+## CLI Workflow
 
 Before the first write, back up your database and project config. Then run each stage explicitly:
 
@@ -96,12 +113,6 @@ php craft link-migrator/migrate/finalize --field=ctaLink --force=1 --acknowledge
 `prepare-fields`, `content`, and `finalize` refuse CLI writes unless `--force=1` is present. If template mismatches are found, finalization also requires `--acknowledge-mismatches=1` after you have reviewed and accepted the template impact. Dry runs do not write field mappings, migration state, project config, or content.
 
 Finalization does not delete Hyper fields. It removes them from field layouts and leaves the prepared native Link fields in place.
-
-## Control Panel Workflow
-
-Open **Link Migrator** in the Craft Control Panel to review the audit, run the staged workflow, monitor each field, and inspect template impact. Write actions require an explicit confirmation; field preparation and finalization require admin access.
-
-![Link Migrator Control Panel wizard](docs/img/cp-wizard.png)
 
 ## Supported Mappings
 
