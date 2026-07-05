@@ -130,7 +130,7 @@ class MigrateController extends Controller
         $mismatchCount = count($audit->mismatchReferences);
         if (!$this->dryRun && $mismatchCount > 0 && !$this->acknowledgeMismatches) {
             $this->stderr(sprintf(
-                "Refusing to finalize: %d template mismatch(es) found. Review `link-migrator/migrate/mismatches`, then re-run with --acknowledge-mismatches=1.\n",
+                "Refusing to finalize: %d template mismatch(es) found. Review `php craft link-migrator/migrate/mismatches`, then re-run with --acknowledge-mismatches=1.\n",
                 $mismatchCount
             ), Console::FG_RED);
             return ExitCode::UNSPECIFIED_ERROR;
