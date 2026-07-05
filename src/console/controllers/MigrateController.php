@@ -15,6 +15,7 @@ class MigrateController extends Controller
     public bool $force = false;
     public bool $verbose = false;
     public bool $createBackup = false;
+    public bool $acknowledgeMismatches = false;
     public int $batchSize = 100;
     public bool $applyProjectConfig = true;
 
@@ -26,6 +27,7 @@ class MigrateController extends Controller
         $options[] = 'force';
         $options[] = 'verbose';
         $options[] = 'createBackup';
+        $options[] = 'acknowledgeMismatches';
         $options[] = 'batchSize';
         $options[] = 'applyProjectConfig';
 
@@ -124,6 +126,15 @@ class MigrateController extends Controller
         $report = $plugin->getReport()->beginRun('finalize', $this->dryRun, $this->verbose);
         $audit = $plugin->getAudit()->buildAudit($this->field);
         $plugin->getReport()->writePreflight($report, $audit, $this, 'finalize cutover');
+
+        $mismatchCount = count($audit->mismatchReferences);
+        if (!$this->dryRun && $mismatchCount > 0 && !$this->acknowledgeMismatches) {
+            $this->stderr(sprintf(
+                "Refusing to finalize: %d template mismatch(es) found. Review `link-migrator/migrate/mismatches`, then re-run with --acknowledge-mismatches=1.\n",
+                $mismatchCount
+            ), Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
 
         $result = $plugin->getCutover()->finalize($audit, [
             'field' => $this->field,

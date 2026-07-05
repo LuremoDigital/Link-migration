@@ -24,7 +24,7 @@ This plugin is independent and unaffiliated. Verbb Hyper is a plugin by Verbb.
 
 ## Installation
 
-Once published, you will be able to install Link Migrator from Craft's in-app Plugin Store or via Composer.
+Once approved, you will be able to install Link Migrator from Craft's in-app Plugin Store or via Composer.
 
 Install from Composer:
 
@@ -32,6 +32,12 @@ Install from Composer:
 composer require luremo/craft-link-migrator
 php craft plugin/install link-migrator
 ```
+
+Link Migrator is a commercial Craft CMS plugin. You can install and evaluate it in local, development, and staging environments. A paid license is required before using it on a public production site. Once approved, purchase and license management will be handled through the Craft Plugin Store.
+
+## Pricing and License
+
+One paid version, everything included. No editions and no feature gates. Migration safety confirmations such as `--force=1` are safety checks, not paywalls.
 
 ## Recommended Workflow
 
@@ -44,8 +50,9 @@ php craft link-migrator/migrate/prepare-fields --force=1
 php craft link-migrator/migrate/content --dry-run=1 --create-backup=1
 php craft link-migrator/migrate/content --force=1 --create-backup=1 --batch-size=100
 php craft link-migrator/migrate/status
+php craft link-migrator/migrate/mismatches
 php craft link-migrator/migrate/finalize --dry-run=1
-php craft link-migrator/migrate/finalize --force=1
+php craft link-migrator/migrate/finalize --force=1 --acknowledge-mismatches=1
 ```
 
 Notes:
@@ -55,6 +62,7 @@ Notes:
 - `prepare-fields` creates new native Link fields and records source-to-target mappings.
 - `content` writes only into prepared native target fields and leaves Hyper values untouched.
 - `finalize` updates field layouts; it does not delete Hyper fields in v1.
+- Do not use `--acknowledge-mismatches=1` until you have reviewed and accepted the template impact.
 
 ## Manual Workflow
 
@@ -68,8 +76,9 @@ php craft project-config/apply
 php craft link-migrator/migrate/content --dry-run=1 --create-backup=1
 php craft link-migrator/migrate/content --force=1 --create-backup=1 --batch-size=100
 php craft link-migrator/migrate/status
+php craft link-migrator/migrate/mismatches
 php craft link-migrator/migrate/finalize --dry-run=1
-php craft link-migrator/migrate/finalize --force=1
+php craft link-migrator/migrate/finalize --force=1 --acknowledge-mismatches=1
 php craft link-migrator/migrate/rollback-info
 ```
 
@@ -128,8 +137,10 @@ Removes Hyper fields from field layouts and leaves the prepared native Link fiel
 Important:
 
 - non-dry runs require `--force=1`
+- if template mismatches are found, non-dry runs also require `--acknowledge-mismatches=1`
 - requires `prepare-fields` and `content` to have completed first
 - does not delete Hyper fields in v1
+- do not acknowledge mismatches until you have reviewed and accepted the template impact
 
 ### `link-migrator/migrate/mismatches`
 
@@ -228,13 +239,13 @@ storage/runtime/link-migrator/backups/
 
 ## Control Panel Wizard
 
-The plugin exposes a read-only CP section for audit and workflow status:
+The plugin exposes an admin-only CP wizard that shows:
 
-1. Scan
-2. Workflow Status
-3. Template Impact Review
+- audit results
+- workflow and field status
+- template impact
 
-Run write stages from the CLI. Non-dry-run writes are gated by `--force=1`.
+The wizard can run prepare, content migration, and finalize with explicit confirmation checkboxes. These actions run synchronously in the request, so the CLI remains the safest and recommended production workflow for large migrations.
 
 ### Migration state
 
@@ -287,7 +298,8 @@ Then perform the real migration:
 php craft link-migrator/migrate/prepare-fields --force=1
 php craft link-migrator/migrate/content --force=1 --create-backup=1 --batch-size=100
 php craft link-migrator/migrate/status
-php craft link-migrator/migrate/finalize --force=1
+php craft link-migrator/migrate/mismatches
+php craft link-migrator/migrate/finalize --force=1 --acknowledge-mismatches=1
 php craft link-migrator/migrate/rollback-info
 ```
 
@@ -295,4 +307,4 @@ php craft link-migrator/migrate/rollback-info
 
 Report bugs and migration edge cases here:
 
-- https://github.com/LuukRM2000/hyper-to-native-migration/issues
+- https://github.com/LuremoDigital/Link-migration/issues
