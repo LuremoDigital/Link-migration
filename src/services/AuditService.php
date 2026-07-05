@@ -148,9 +148,9 @@ class AuditService extends Component
                     continue;
                 }
 
-                foreach (['handle', 'class'] as $key) {
-                    if (isset($type[$key]) && is_string($type[$key])) {
-                        $handles[] = $this->normalizeHyperType($type[$key]);
+                foreach (['handle', 'class'] as $typeKey) {
+                    if (isset($type[$typeKey]) && is_string($type[$typeKey])) {
+                        $handles[] = $this->normalizeHyperType($type[$typeKey]);
                         break;
                     }
                 }

@@ -54,6 +54,13 @@ class CutoverService extends Component
 
                 $reconciliation = LinkMigrator::$plugin->getContentMigration()->reconcileField($fieldAudit, $mapping);
                 if ($reconciliation['unverified'] !== []) {
+                    if ($reconciliation['checked'] === 0) {
+                        throw new \RuntimeException(
+                            $reconciliation['unverified'][0]['warnings'][0]
+                                ?? 'No source values were checked; field is not ready to finalize.'
+                        );
+                    }
+
                     throw new \RuntimeException(sprintf(
                         '%d of %d source value(s) are not verified.',
                         count($reconciliation['unverified']),
