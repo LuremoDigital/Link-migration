@@ -93,7 +93,32 @@
           <p class="warning">
             {{ mismatchCount }} potential Hyper API usage(s) found. These can break after finalize.
           </p>
-          <p>Run <code>php craft link-migrator/migrate/mismatches</code> for file and line details.</p>
+          <details>
+            <summary class="btn">Show mismatches</summary>
+            <table class="data fullwidth" style="margin-top: 12px;">
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Line</th>
+                  <th>Change</th>
+                  <th>Snippet</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for mismatch in audit.mismatchReferences %}
+                  <tr>
+                    <td><code>{{ mismatch.file }}</code></td>
+                    <td>{{ mismatch.line }}</td>
+                    <td>
+                      <code>{{ mismatch.pattern }}</code> → <code>{{ mismatch.replacement }}</code>
+                      <div class="light">{{ mismatch.reason }}</div>
+                    </td>
+                    <td><code>{{ mismatch.snippet }}</code></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </details>
         {% else %}
           <p>No Hyper-only API usage found in templates or modules.</p>
         {% endif %}
