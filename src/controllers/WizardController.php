@@ -13,9 +13,6 @@ class WizardController extends Controller
 
     public function beforeAction($action): bool
     {
-        // The wizard creates fields, writes content, and mutates field layouts,
-        // so it is admin-only. Prepare and finalize also change project config,
-        // which requireAdmin() additionally guards via allowAdminChanges.
         $this->requireAdmin(in_array($action->id, ['prepare-fields', 'finalize'], true));
 
         return parent::beforeAction($action);
@@ -36,18 +33,27 @@ class WizardController extends Controller
     public function actionPrepareFields(): Response
     {
         $this->requirePostRequest();
-        $plugin = LinkMigrator::$plugin;
+        if (!$this->forceConfirmed()) {
+            $this->setFailFlash('Confirm the write before preparing native fields.');
+            return $this->redirect(LinkMigrator::HANDLE);
+        }
 
         try {
-            $report = $plugin->getReport()->beginRun('prepare-fields');
+            $plugin = LinkMigrator::$plugin;
             $audit = $plugin->getAudit()->buildAudit();
-            $result = $plugin->getFieldMigration()->migrate($audit, ['dryRun' => false, 'force' => true]);
-            $plugin->getReport()->writeFieldResult($report, $result);
+            $result = $plugin->getFieldMigration()->migrate($audit, [
+                'dryRun' => false,
+                'force' => true,
+            ]);
 
             if ($result->hasErrors()) {
-                $this->setFailFlash("Prepare completed with errors. See the run report: {$report->reportPath}");
+                $this->setFailFlash(sprintf('Prepare completed with %d error(s).', count($result->errors)));
             } else {
-                $this->setSuccessFlash('Native Link fields prepared successfully.');
+                $this->setSuccessFlash(sprintf(
+                    'Prepared %d native field(s). %d skipped.',
+                    count($result->migrated),
+                    count($result->skipped)
+                ));
             }
         } catch (\Throwable $e) {
             $this->setFailFlash($e->getMessage());
@@ -59,10 +65,13 @@ class WizardController extends Controller
     public function actionMigrateContent(): Response
     {
         $this->requirePostRequest();
-        $plugin = LinkMigrator::$plugin;
+        if (!$this->forceConfirmed()) {
+            $this->setFailFlash('Confirm the write before migrating content.');
+            return $this->redirect(LinkMigrator::HANDLE);
+        }
 
         try {
-            $report = $plugin->getReport()->beginRun('content');
+            $plugin = LinkMigrator::$plugin;
             $audit = $plugin->getAudit()->buildAudit();
             $result = $plugin->getContentMigration()->migrate($audit, [
                 'dryRun' => false,
@@ -70,12 +79,18 @@ class WizardController extends Controller
                 'createBackup' => true,
                 'batchSize' => 100,
             ]);
-            $plugin->getReport()->writeContentResult($report, $result);
 
-            if ($result->hasErrors()) {
-                $this->setFailFlash("Content migration completed with errors. See the run report: {$report->reportPath}");
+            $message = sprintf(
+                'Migrated %d value(s), skipped %d, warnings %d, errors %d.',
+                $result->migratedCount,
+                $result->skippedCount,
+                $result->warningCount,
+                $result->errorCount
+            );
+            if ($result->hasErrors() || $result->hasWarnings()) {
+                $this->setFailFlash($message);
             } else {
-                $this->setSuccessFlash('Content migration completed successfully.');
+                $this->setSuccessFlash($message);
             }
         } catch (\Throwable $e) {
             $this->setFailFlash($e->getMessage());
@@ -87,36 +102,46 @@ class WizardController extends Controller
     public function actionFinalize(): Response
     {
         $this->requirePostRequest();
-        $plugin = LinkMigrator::$plugin;
+        if (!$this->forceConfirmed()) {
+            $this->setFailFlash('Confirm the write before finalizing.');
+            return $this->redirect(LinkMigrator::HANDLE);
+        }
 
         try {
+            $plugin = LinkMigrator::$plugin;
             $audit = $plugin->getAudit()->buildAudit();
-
-            // Mirror the CLI mismatch gate (finding 9): cutover breaks templates that still use
-            // Hyper-only APIs, so require an explicit acknowledgement when mismatches exist.
             $mismatchCount = count($audit->mismatchReferences);
-            $acknowledged = (bool)Craft::$app->getRequest()->getBodyParam('acknowledgeMismatches');
-            if ($mismatchCount > 0 && !$acknowledged) {
+            if ($mismatchCount > 0 && !Craft::$app->getRequest()->getBodyParam('acknowledgeMismatches')) {
                 $this->setFailFlash(sprintf(
-                    '%d unreviewed template mismatch(es) found. Review them and confirm before finalizing.',
+                    '%d template mismatch(es) found. Review them and confirm before finalizing.',
                     $mismatchCount
                 ));
                 return $this->redirect(LinkMigrator::HANDLE);
             }
 
-            $report = $plugin->getReport()->beginRun('finalize');
-            $result = $plugin->getCutover()->finalize($audit, ['dryRun' => false, 'force' => true]);
-            $plugin->getReport()->writeCutoverResult($report, $result);
+            $result = $plugin->getCutover()->finalize($audit, [
+                'dryRun' => false,
+                'force' => true,
+            ]);
 
             if ($result->hasErrors()) {
-                $this->setFailFlash("Finalize completed with errors. See the run report: {$report->reportPath}");
+                $this->setFailFlash(sprintf('Finalize completed with %d error(s).', count($result->errors)));
             } else {
-                $this->setSuccessFlash('Field layout cutover completed successfully.');
+                $this->setSuccessFlash(sprintf(
+                    'Finalized %d field(s). %d skipped.',
+                    count($result->finalized),
+                    count($result->skipped)
+                ));
             }
         } catch (\Throwable $e) {
             $this->setFailFlash($e->getMessage());
         }
 
         return $this->redirect(LinkMigrator::HANDLE);
+    }
+
+    private function forceConfirmed(): bool
+    {
+        return Craft::$app->getRequest()->getBodyParam('force') === '1';
     }
 }

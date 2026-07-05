@@ -59,6 +59,11 @@ class ContentMigrationResult extends Model
         return $this->errorCount > 0;
     }
 
+    public function hasWarnings(): bool
+    {
+        return $this->warningCount > 0;
+    }
+
     private function pushSample(array &$bucket, mixed $item): void
     {
         if (count($bucket) < self::DETAIL_LIMIT) {
