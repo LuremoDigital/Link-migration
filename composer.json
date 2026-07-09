@@ -10,7 +10,7 @@
     "link",
     "cli"
   ],
-  "license": "proprietary",
+  "license": "MIT",
   "authors": [
     {
       "name": "Luremo",
@@ -54,6 +54,7 @@
     "developer": "Luremo",
     "developerUrl": "https://github.com/LuremoDigital",
     "documentationUrl": "https://github.com/LuremoDigital/Link-migration/blob/main/README.md",
-    "changelogUrl": "https://raw.githubusercontent.com/LuremoDigital/Link-migration/main/CHANGELOG.md"
+    "changelogUrl": "https://raw.githubusercontent.com/LuremoDigital/Link-migration/main/CHANGELOG.md",
+    "pluginStoreUrl": "https://plugins.craftcms.com/link-migrator"
   }
 }

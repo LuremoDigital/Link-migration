@@ -31,7 +31,7 @@
       {{ 'This wizard keeps Hyper fields intact, prepares parallel native Link fields, migrates content in batches, and only cuts field layouts over during the final step.'|t('link-migrator') }}
     </p>
     <p class="light">
-      {{ 'Link Migrator can be evaluated in local, development, and staging environments. A paid Craft Plugin Store license is required before using it on a public production site.'|t('link-migrator') }}
+      {{ 'Link Migrator is free to use in local, development, staging, and production environments.'|t('link-migrator') }}
     </p>
 
     {% if totalFields == 0 %}
@@ -141,7 +141,7 @@
           {{ 'Removes Hyper fields from layouts only after live content is verified. Hyper fields themselves are not deleted.'|t('link-migrator') }}
         </p>
         <p class="light">
-          {{ 'Before finalizing on a public production site, make sure Link Migrator has a valid Craft Plugin Store license. The Finalize step changes field layouts, so review your templates, backups, reports, and license status before continuing.'|t('link-migrator') }}
+          {{ 'The Finalize step changes field layouts, so review your templates, backups, and reports before continuing.'|t('link-migrator') }}
         </p>
         <form method="post" onsubmit="return confirm({{ 'Remove Hyper fields from field layouts?'|t('link-migrator')|json_encode|raw }});">
           {{ csrfInput() }}

@@ -1,13 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
-  <defs>
-    <linearGradient id="bg" x1="16" y1="12" x2="112" y2="116" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#143E46"/>
-      <stop offset="1" stop-color="#1C5962"/>
-    </linearGradient>
-  </defs>
-  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
-  <g fill="none" stroke="#F4F8F8" stroke-linecap="round" stroke-linejoin="round" stroke-width="8">
-    <path d="M72 38H48V28L30 46l18 18V54h24"/>
-    <path d="M56 90h24v10l18-18-18-18v10H56"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 794 794" role="img" aria-label="Link Migrator icon">
+  <rect width="794" height="794" rx="125" fill="#F9EBDE"/>
+  <g fill="none" stroke="#815854" stroke-linecap="round" stroke-linejoin="round" stroke-width="42">
+    <path d="M447 236H297V173L184 286l113 113v-63h150"/>
+    <path d="M347 558h150v63l113-113-113-113v63H347"/>
   </g>
 </svg>

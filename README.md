@@ -1,15 +1,20 @@
 <p align="center">
-  <img src="src/icon.svg" width="120" alt="Link Migrator icon">
+  <img src="./src/icon.svg" width="120" alt="Link Migrator icon">
 </p>
 
-# Link Migrator
+<h1 align="center">Link Migrator</h1>
 
-Move Verbb Hyper fields and content to Craft CMS native Link fields with a guided Control Panel workflow.
+<p align="center">
+  Migrate Verbb Hyper fields and content to Craft CMS native Link fields — safely, in stages, with a guided Control Panel workflow.
+</p>
 
-![Craft CMS 5.x](https://img.shields.io/badge/Craft%20CMS-5.3%2B-e5422b?logo=craftcms&logoColor=white)
-![PHP 8.2+](https://img.shields.io/badge/PHP-8.2%2B-777bb4?logo=php&logoColor=white)
-![Commercial license](https://img.shields.io/badge/license-commercial-1f6feb)
-![Price $5](https://img.shields.io/badge/price-%245-2ea44f)
+<p align="center">
+  <a href="https://plugins.craftcms.com/link-migrator"><img src="https://img.shields.io/badge/Craft%20Plugin%20Store-link--migrator-E5422B.svg" alt="Craft Plugin Store"></a>
+  <img src="https://img.shields.io/badge/Craft%20CMS-5.x-E5422B.svg" alt="Craft CMS 5.x">
+  <img src="https://img.shields.io/badge/PHP-8.2%2B-777BB4.svg" alt="PHP 8.2+">
+  <img src="https://img.shields.io/badge/edition-Free-0EA5E9.svg" alt="Free edition">
+  <img src="https://img.shields.io/badge/license-MIT-0F172A.svg" alt="MIT license">
+</p>
 
 ---
 
@@ -39,14 +44,14 @@ Link Migrator is an independent product and is not affiliated with Verbb. Hyper 
 
 ## Installation
 
-Once approved, install Link Migrator from the Craft Plugin Store or use Composer:
+Install Link Migrator from the Craft Plugin Store or use Composer:
 
 ```bash
 composer require luremo/craft-link-migrator
 php craft plugin/install link-migrator
 ```
 
-Link Migrator is a single commercial plugin priced at **$5**. Every feature is included; there are no Lite or Pro editions.
+Link Migrator is free to use, with every feature included and no edition split.
 
 ## Start in the Control Panel
 
@@ -201,8 +206,13 @@ This reports migrated, skipped, warning, error, and backup counts. It does not r
 
 ## License
 
-Commercial. See [LICENSE.md](LICENSE.md). One license covers one production project.
+Link Migrator is released under the [MIT License](LICENSE.txt).
 
 ---
 
-Built by [Luremo](https://github.com/LuremoDigital) for the Craft CMS community.
+## Screenshots
+
+<p align="center"><img src="docs/img/cp-wizard.png" alt="Link Migrator Control Panel wizard" width="800"></p>
+<p align="center"><em>The migration wizard — audit, prepare, migrate, review, and finalize in one guided workflow.</em></p>
+
+<p align="center">Built by <a href="https://github.com/LuremoDigital">Luremo</a> for the Craft CMS community.</p>
