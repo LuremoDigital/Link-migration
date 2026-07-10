@@ -203,6 +203,7 @@ This reports migrated, skipped, warning, error, and backup counts. It does not r
 - **Bug reports:** [GitHub Issues](https://github.com/LuremoDigital/Link-migration/issues). Include Craft, PHP, and Hyper versions plus the relevant JSON report.
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **Template migration guide:** [docs/TEMPLATE-IMPACT.md](docs/TEMPLATE-IMPACT.md)
+- **Plugin Store description:** [docs/plugin-store-description.md](docs/plugin-store-description.md)
 
 ## License
 
