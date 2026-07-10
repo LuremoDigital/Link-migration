@@ -11,6 +11,7 @@ use yii\console\ExitCode;
 class MigrateController extends Controller
 {
     public ?string $field = null;
+    public ?string $target = null;
     public bool $dryRun = false;
     public bool $force = false;
     public bool $verbose = false;
@@ -23,6 +24,7 @@ class MigrateController extends Controller
     {
         $options = parent::options($actionID);
         $options[] = 'field';
+        $options[] = 'target';
         $options[] = 'dryRun';
         $options[] = 'force';
         $options[] = 'verbose';
@@ -66,6 +68,52 @@ class MigrateController extends Controller
 
         [, $exitCode] = $this->runFieldStage();
         return $exitCode;
+    }
+
+    public function actionAdoptPrepared(): int
+    {
+        if (!$this->dryRun && !$this->force) {
+            $this->stderr("Refusing to adopt prepared fields without --force.\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        if ($this->target !== null && $this->field === null) {
+            $this->stderr("--target requires --field.\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        $plugin = LinkMigrator::$plugin;
+        $report = $plugin->getReport()->beginRun('adopt-prepared', $this->dryRun, $this->verbose);
+        $audit = $plugin->getAudit()->buildAudit($this->field);
+
+        if ($audit->fields === []) {
+            if ($this->field !== null) {
+                $this->stderr("No Hyper field found with handle `{$this->field}`.\n", Console::FG_RED);
+                return ExitCode::UNSPECIFIED_ERROR;
+            }
+
+            $this->stdout("No Hyper fields found; nothing to adopt.\n", Console::FG_YELLOW);
+            return ExitCode::OK;
+        }
+
+        $result = $plugin->getFieldMigration()->adoptPrepared($audit, [
+            'dryRun' => $this->dryRun,
+            'target' => $this->target,
+        ]);
+
+        $plugin->getReport()->writeFieldResult($report, $result, $this);
+        $this->stdout("Adopt report written to {$report->reportPath}\n", Console::FG_GREEN);
+
+        if ($result->hasErrors()) {
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        if ($result->migrated === [] && $result->mappings === [] && $result->skipped !== []) {
+            $this->stderr("No mappings were adopted or previously recorded. Check the skip reasons in the report before migrating content.\n", Console::FG_RED);
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+
+        return ExitCode::OK;
     }
 
     public function actionContent(): int

@@ -105,17 +105,54 @@ php craft link-migrator/migrate/content --field=ctaLink --force=1 --create-backu
 php craft link-migrator/migrate/finalize --field=ctaLink --force=1 --acknowledge-mismatches=1
 ```
 
+## Multi-Environment Deployment
+
+Field definitions and layout placements live in Craft's project config, so `prepare-fields` and `finalize` deploy as YAML. Content and the plugin's migration state live in each environment's database, so content migration must run in every environment.
+
+The recommended flow for a local → production pipeline (for example Docker with `project-config/apply` on deploy):
+
+```bash
+# 1. Locally: audit, prepare fields, migrate local content, and verify.
+php craft link-migrator/migrate/prepare-fields --force=1
+php craft link-migrator/migrate/content --force=1 --create-backup=1
+php craft link-migrator/migrate/status
+# Commit the project config changes and deploy. Do not deploy template
+# changes that render the native fields yet — they are still empty in
+# production at this point.
+
+# 2. On production, after project config is applied: adopt the deployed
+#    native fields so this environment knows the source-to-target mappings.
+php craft link-migrator/migrate/adopt-prepared --dry-run=1
+php craft link-migrator/migrate/adopt-prepared --force=1
+
+# 3. On production: migrate content and verify.
+php craft link-migrator/migrate/content --force=1 --create-backup=1
+php craft link-migrator/migrate/status
+
+# 4. Locally: update templates, finalize, then commit and deploy the
+#    project config and template changes together.
+php craft link-migrator/migrate/mismatches
+php craft link-migrator/migrate/finalize --force=1 --acknowledge-mismatches=1
+```
+
+Local content migration in step 1 is required: `finalize` refuses fields whose content has not been migrated and verified in the environment where it runs. Ship template updates that render the native fields with the second deploy, after every environment has migrated its content — deploying them earlier would render empty native fields in production.
+
+`adopt-prepared` matches each Hyper field to a native Link field named `<sourceHandle>Native` (use `--field` together with `--target` for a different handle) and records the mapping without creating or changing any fields, so it is safe with `allowAdminChanges` disabled. Fields that already have a mapping in that environment are skipped, the command warns when the matched field does not allow the link types the mapping needs, and it refuses to guess when several candidate handles exist (for example `ctaLinkNative` and `ctaLinkNative2`) — pass `--field` and `--target` to resolve those explicitly. It exits non-zero when nothing was adopted or previously recorded, so a misconfigured deploy fails loudly in scripts.
+
+Deploy the finalize project config only after `status` is clean in every environment: applying YAML replays the layout cutover without the plugin's content verification, so finalizing before an environment has migrated its content would expose empty native fields there.
+
 ## How the Migration Works
 
 | Stage | What it does | Writes data? |
 | --- | --- | :---: |
 | `audit` | Discovers Hyper fields, mapping support, code references, and likely API mismatches. | No |
 | `prepare-fields` | Creates native Link fields, places them beside their source fields in layouts, and records the mappings. | Yes |
+| `adopt-prepared` | Records mappings for native Link fields that arrived through deployed project config, without creating fields. | Plugin state only |
 | `content` | Copies supported values into prepared native fields and verifies saved values. | Yes |
 | `status` | Shows each field's phase, target handle, and migration counters. | No |
 | `finalize` | Reconciles live content, then removes source Hyper fields from layouts when every value is ready. | Yes |
 
-`prepare-fields`, `content`, and `finalize` refuse CLI writes unless `--force=1` is present. If template mismatches are found, finalization also requires `--acknowledge-mismatches=1` after you have reviewed and accepted the template impact. Dry runs do not write field mappings, migration state, project config, or content.
+`prepare-fields`, `adopt-prepared`, `content`, and `finalize` refuse CLI writes unless `--force=1` is present. If template mismatches are found, finalization also requires `--acknowledge-mismatches=1` after you have reviewed and accepted the template impact. Dry runs do not write field mappings, migration state, project config, or content.
 
 Finalization does not delete Hyper fields. It removes them from field layouts and leaves the prepared native Link fields in place.
 
@@ -180,7 +217,7 @@ With `--create-backup=1`, content migration writes per-element source payloads t
 storage/runtime/link-migrator/backups/
 ```
 
-Resumable per-element state is stored in `{{%linkmigrator_migrations}}`. Prepared source-to-target mappings are stored in `{{%linkmigrator_fieldmappings}}` only after `prepare-fields` writes them. Audit, status, and the Control Panel index remain read-only.
+Resumable per-element state is stored in `{{%linkmigrator_migrations}}`. Prepared source-to-target mappings are stored in `{{%linkmigrator_fieldmappings}}` only after `prepare-fields` or `adopt-prepared` writes them. Audit, status, and the Control Panel index remain read-only.
 
 Use the informational summary at any time:
 
