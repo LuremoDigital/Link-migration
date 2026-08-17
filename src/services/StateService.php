@@ -139,9 +139,17 @@ class StateService extends Component
         $this->saveRecord($action, $fieldHandle, $sourceFieldUid, $element, 'skipped', [$reason], [], null);
     }
 
-    public function markWarning(string $action, string $fieldHandle, string $sourceFieldUid, ElementInterface $element, array $warnings, array $backup = []): void
+    public function markWarning(
+        string $action,
+        string $fieldHandle,
+        string $sourceFieldUid,
+        ElementInterface $element,
+        array $warnings,
+        array $backup = [],
+        ?string $backupPath = null
+    ): void
     {
-        $this->saveRecord($action, $fieldHandle, $sourceFieldUid, $element, 'warning', $warnings, $backup, null);
+        $this->saveRecord($action, $fieldHandle, $sourceFieldUid, $element, 'warning', $warnings, $backup, $backupPath);
     }
 
     public function markError(
@@ -256,7 +264,7 @@ class StateService extends Component
         ]);
     }
 
-    private function saveRecord(
+    protected function saveRecord(
         string $action,
         string $fieldHandle,
         string $sourceFieldUid,

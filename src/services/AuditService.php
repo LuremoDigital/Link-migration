@@ -4,7 +4,10 @@ namespace luremo\linkmigrator\services;
 
 use Craft;
 use craft\base\Component;
+use craft\db\Query;
 use craft\fields\Link;
+use craft\fields\linktypes\Url;
+use craft\services\ElementSources;
 use luremo\linkmigrator\LinkMigrator;
 use luremo\linkmigrator\models\AuditResult;
 use luremo\linkmigrator\models\FieldAudit;
@@ -27,6 +30,21 @@ class AuditService extends Component
             'pattern' => 'linkValue',
             'replacement' => 'value or url',
             'reason' => 'Hyper `linkValue` maps to `value` for the raw stored value or `url` for rendered href output.',
+        ],
+        [
+            'pattern' => 'customText',
+            'replacement' => 'label',
+            'reason' => 'Typed Link `customText` maps to Craft LinkData `label`.',
+        ],
+        [
+            'pattern' => 'linkedUrl',
+            'replacement' => 'url',
+            'reason' => 'Typed Link `linkedUrl` maps to Craft LinkData `url`.',
+        ],
+        [
+            'pattern' => 'getLinkAttributes(',
+            'replacement' => 'manual LinkData attribute mapping',
+            'reason' => 'Typed Link `getLinkAttributes()` is not portable to every supported Craft LinkData version.',
         ],
         [
             'pattern' => 'getLink(',
@@ -63,12 +81,32 @@ class AuditService extends Component
             'replacement' => 'entry, asset, category, email, phone, url',
             'reason' => 'Escaped Hyper class-name checks in PHP strings must be rewritten to Craft LinkData short handles.',
         ],
+        [
+            'pattern' => 'lenz\\linkfield',
+            'replacement' => 'craft\\fields\\data\\LinkData',
+            'reason' => 'Typed Link class references must be rewritten for Craft LinkData.',
+        ],
+        [
+            'pattern' => 'lenz\\\\linkfield',
+            'replacement' => 'craft\\fields\\data\\LinkData',
+            'reason' => 'Escaped Typed Link class references must be rewritten for Craft LinkData.',
+        ],
+        [
+            'pattern' => 'typedlinkfield',
+            'replacement' => 'Craft LinkData APIs',
+            'reason' => 'Legacy Typed Link plugin references must be rewritten for Craft LinkData.',
+        ],
     ];
 
     public function buildAudit(?string $fieldHandle = null): AuditResult
     {
         $result = new AuditResult();
         $allFields = Craft::$app->getFields()->getAllFields(false);
+        $storedFields = (new Query())
+            ->select(['id', 'type', 'settings'])
+            ->from('{{%fields}}')
+            ->indexBy('id')
+            ->all();
         $fieldsByHandle = [];
 
         foreach ($allFields as $field) {
@@ -76,20 +114,31 @@ class AuditService extends Component
                 continue;
             }
 
-            if (!$this->isHyperField($field)) {
+            $stored = $storedFields[$field->id] ?? [];
+            $sourceKind = $this->sourceKind($field, (string)($stored['type'] ?? ''));
+            if ($sourceKind === null) {
                 continue;
             }
 
-            $settings = array_merge($field->getAttributes(), method_exists($field, 'getSettings') ? $field->getSettings() : []);
-            $linkTypes = $this->extractLinkTypes($settings);
+            $settings = $this->mergeFieldSettings(
+                $this->decodeSettings($stored['settings'] ?? null),
+                array_merge(
+                    $field->getAttributes(),
+                    method_exists($field, 'getSettings') ? $field->getSettings() : []
+                ),
+            );
+            $linkTypes = $this->extractLinkTypes($settings, $sourceKind);
             $fieldLayouts = $this->extractCustomFieldLayouts($settings);
             $multi = (bool)($settings['multipleLinks'] ?? $settings['allowMultiple'] ?? false);
+            $sourcePluginAvailable = $sourceKind !== 'typed-link' || $this->typedLinkPluginAvailable($field);
 
             $audit = new FieldAudit([
                 'fieldId' => (int)$field->id,
                 'uid' => (string)$field->uid,
                 'handle' => (string)$field->handle,
                 'name' => (string)$field->name,
+                'sourceKind' => $sourceKind,
+                'sourcePluginAvailable' => $sourcePluginAvailable,
                 'multi' => $multi,
                 'allowedHyperTypes' => $linkTypes,
                 'customFieldLayouts' => $fieldLayouts,
@@ -99,7 +148,19 @@ class AuditService extends Component
 
             $audit->mapping = LinkMigrator::$plugin
                 ->getMappingStrategy()
-                ->decide($settings, $linkTypes, $multi, $fieldLayouts);
+                ->decide(
+                    $settings,
+                    $linkTypes,
+                    $multi,
+                    $fieldLayouts,
+                    $sourceKind,
+                    $sourceKind === 'typed-link' ? $this->availableTypedLinkSources() : [],
+                    $this->nativeLinkCapabilities(),
+                );
+            if (!$sourcePluginAvailable) {
+                $audit->mapping->status = MappingDecision::STATUS_UNSUPPORTED;
+                $audit->mapping->unsupportedReasons[] = 'Typed Link Field is not installed and enabled, so its values cannot be hydrated for migration.';
+            }
             $audit->warnings = $audit->mapping->warnings;
 
             $fieldsByHandle[$audit->handle] = $audit;
@@ -114,7 +175,7 @@ class AuditService extends Component
         $result->codeReferences = $this->findCodeReferences();
         $result->mismatchReferences = $this->findMismatchReferences();
         $result->notes = [
-            'Hyper must remain installed during content migration so existing field values can still be normalized.',
+            'Source plugins must remain installed and enabled during content migration so existing field values can still be hydrated.',
             'Content migration should be rerun in each environment because content is environment-specific.',
             'Craft Link field exists only in Craft 5.3.0+; advanced fields like URL suffix/class/id/rel require newer 5.x versions.',
         ];
@@ -122,15 +183,63 @@ class AuditService extends Component
         return $result;
     }
 
-    private function isHyperField(object $field): bool
+    private function sourceKind(object $field, string $storedType): ?string
     {
-        return is_a($field, 'verbb\\hyper\\fields\\HyperField', true)
+        if ($this->isTypedLinkType($storedType) || $this->isTypedLinkType($field::class)) {
+            return 'typed-link';
+        }
+
+        return (
+            is_a($field, 'verbb\\hyper\\fields\\HyperField', true)
             || is_a($field, 'verbb\\hyper\\fields\\Hyper', true)
-            || str_contains($field::class, '\\hyper\\fields\\');
+            || str_contains($field::class, '\\hyper\\fields\\')
+        ) ? 'hyper' : null;
     }
 
-    private function extractLinkTypes(array $settings): array
+    private function isTypedLinkType(string $type): bool
     {
+        return in_array($type, [
+            'lenz\\linkfield\\fields\\LinkField',
+            'typedlinkfield\\fields\\LinkField',
+        ], true);
+    }
+
+    private function typedLinkPluginAvailable(object $field): bool
+    {
+        if (!is_a($field, 'lenz\\linkfield\\fields\\LinkField') && !is_a($field, 'typedlinkfield\\fields\\LinkField')) {
+            return false;
+        }
+
+        foreach (Craft::$app->getPlugins()->getAllPlugins() as $plugin) {
+            if (
+                (str_starts_with($plugin::class, 'lenz\\linkfield\\') || str_starts_with($plugin::class, 'typedlinkfield\\')) &&
+                Craft::$app->getPlugins()->isPluginEnabled($plugin->handle)
+            ) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function extractLinkTypes(array $settings, string $sourceKind = 'hyper'): array
+    {
+        if ($sourceKind === 'typed-link') {
+            $types = [];
+            $enableAll = ($settings['enableAllLinkTypes'] ?? false) === true;
+            foreach ((array)($settings['typeSettings'] ?? []) as $type => $typeSettings) {
+                $typeSettings = (array)$typeSettings;
+                $enabled = array_key_exists('enabled', $typeSettings)
+                    ? $typeSettings['enabled'] === true
+                    : $enableAll;
+                if ($enabled) {
+                    $types[] = $this->normalizeHyperType((string)$type);
+                }
+            }
+
+            return array_values(array_unique(array_filter($types)));
+        }
+
         $types = $settings['linkTypes'] ?? $settings['types'] ?? [];
         $handles = [];
 
@@ -173,9 +282,64 @@ class AuditService extends Component
             'email' => 'email',
             'entry' => 'entry',
             'phone' => 'phone',
+            'tel' => 'tel',
             'url' => 'url',
             default => $type,
         };
+    }
+
+    private function decodeSettings(mixed $settings): array
+    {
+        if (is_array($settings)) {
+            return $settings;
+        }
+
+        if (!is_string($settings) || $settings === '') {
+            return [];
+        }
+
+        $decoded = json_decode($settings, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    private function mergeFieldSettings(array $stored, array $hydrated): array
+    {
+        return array_merge($hydrated, $stored);
+    }
+
+    private function nativeLinkCapabilities(): array
+    {
+        return [
+            'showLabelField' => property_exists(Link::class, 'showLabelField'),
+            'advancedFields' => property_exists(Link::class, 'advancedFields'),
+            'targetField' => MappingStrategyService::supportsLegacyTargetField(),
+            'allowRootRelativeUrls' => property_exists(Url::class, 'allowRootRelativeUrls'),
+            'allowAnchors' => property_exists(Url::class, 'allowAnchors'),
+            'allowCustomSchemes' => property_exists(Url::class, 'allowCustomSchemes'),
+        ];
+    }
+
+    private function availableTypedLinkSources(): array
+    {
+        $types = [
+            'asset' => \craft\elements\Asset::class,
+            'category' => \craft\elements\Category::class,
+            'entry' => \craft\elements\Entry::class,
+        ];
+        $available = [];
+
+        foreach ($types as $type => $elementType) {
+            try {
+                $available[$type] = array_values(array_filter(array_map(
+                    static fn(array $source) => $source['key'] ?? null,
+                    Craft::$app->getElementSources()->getSources($elementType, ElementSources::CONTEXT_FIELD),
+                )));
+            } catch (\Throwable) {
+                $available[$type] = [];
+            }
+        }
+
+        return $available;
     }
 
     private function extractCustomFieldLayouts(array $settings): array
@@ -241,7 +405,7 @@ class AuditService extends Component
                 $mapping = new MappingDecision([
                     'status' => (string)($item['status'] ?? MappingDecision::STATUS_PARTIAL),
                     'craftLinkTypes' => $field->types,
-                    'advancedFields' => $field->advancedFields,
+                    'advancedFields' => $this->nativeAdvancedFields($field),
                 ]);
 
                 $audit = new FieldAudit([
@@ -262,6 +426,15 @@ class AuditService extends Component
         }
 
         return array_values($recovered);
+    }
+
+    private function nativeAdvancedFields(object $field): array
+    {
+        if (property_exists($field, 'advancedFields')) {
+            return (array)$field->advancedFields;
+        }
+
+        return property_exists($field, 'showTargetField') && $field->showTargetField ? ['target'] : [];
     }
 
     private function findFieldByHandle(string $handle): ?object

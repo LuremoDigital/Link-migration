@@ -48,6 +48,8 @@ class ReportService extends Component
                     'uid' => $field->uid,
                     'handle' => $field->handle,
                     'name' => $field->name,
+                    'sourceKind' => $field->sourceKind,
+                    'sourcePluginAvailable' => $field->sourcePluginAvailable,
                     'multi' => $field->multi,
                     'allowedHyperTypes' => $field->allowedHyperTypes,
                     'customFieldLayouts' => $field->customFieldLayouts,
@@ -82,8 +84,8 @@ class ReportService extends Component
         $controller->stdout($this->renderSummary($summary));
         $controller->stdout("Warnings:\n");
         $controller->stdout("- Back up the database and project config before non-dry runs.\n");
-        $controller->stdout("- Hyper remains installed through the staged workflow; do not uninstall it until finalize is complete.\n");
-        $controller->stdout("- Prepare creates new native fields instead of overwriting existing Hyper fields.\n");
+        $controller->stdout("- Keep each source plugin installed and enabled through the staged workflow.\n");
+        $controller->stdout("- Prepare creates new native fields instead of overwriting source fields.\n");
         $controller->stdout("- Finalize only updates field layouts; v1 does not delete Hyper fields automatically.\n\n");
     }
 

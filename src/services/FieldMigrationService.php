@@ -227,19 +227,37 @@ class FieldMigrationService extends Component
      */
     private function warnOnUnsupportedTypes(FieldMigrationResult $result, object $fieldAudit, array $target): void
     {
+        $warnings = [];
         $unsupportedTypes = array_diff($fieldAudit->mapping->craftLinkTypes, $target['types']);
-        if ($unsupportedTypes === []) {
+        if ($unsupportedTypes !== []) {
+            $warnings[] = sprintf(
+                'Target `%s` does not allow link type(s) the mapping needs: %s. Verify this is the prepared field.',
+                $target['handle'],
+                implode(', ', $unsupportedTypes)
+            );
+        }
+
+        if ($fieldAudit->mapping->showLabelField && array_key_exists('showLabelField', $target) && !$target['showLabelField']) {
+            $warnings[] = sprintf('Target `%s` cannot store mapped label values.', $target['handle']);
+        }
+
+        if (array_key_exists('advancedFields', $target)) {
+            foreach (array_diff($fieldAudit->mapping->advancedFields, ['label'], $target['advancedFields']) as $attribute) {
+                if ($attribute === 'target' && ($target['showTargetField'] ?? false)) {
+                    continue;
+                }
+                $warnings[] = sprintf('Target `%s` cannot store mapped %s values.', $target['handle'], $attribute);
+            }
+        }
+
+        if ($warnings === []) {
             return;
         }
 
         $result->warnings[] = [
             'field' => $fieldAudit->handle,
             'target' => $target['handle'],
-            'warnings' => [sprintf(
-                'Target `%s` does not allow link type(s) the mapping needs: %s. Verify this is the prepared field.',
-                $target['handle'],
-                implode(', ', $unsupportedTypes)
-            )],
+            'warnings' => $warnings,
         ];
     }
 
@@ -295,6 +313,11 @@ class FieldMigrationService extends Component
             'uid' => (string)$field->uid,
             'handle' => (string)$field->handle,
             'types' => (array)$field->types,
+            'showLabelField' => property_exists($field, 'showLabelField') && $field->showLabelField,
+            'showTargetField' => property_exists($field, 'showTargetField')
+                ? $field->showTargetField
+                : (method_exists($field, 'getShowTargetField') && $field->getShowTargetField()),
+            'advancedFields' => property_exists($field, 'advancedFields') ? (array)$field->advancedFields : [],
         ];
     }
 
@@ -308,8 +331,19 @@ class FieldMigrationService extends Component
             'name' => $existingField->name,
             'handle' => $targetHandle,
             'types' => $mapping->craftLinkTypes,
-            'showLabelField' => true,
         ];
+
+        if (property_exists(Link::class, 'showLabelField')) {
+            $config['showLabelField'] = $mapping->showLabelField;
+        }
+
+        if ($mapping->showTargetField && MappingStrategyService::supportsLegacyTargetField()) {
+            $config['showTargetField'] = true;
+        }
+
+        if ($mapping->typeSettings !== []) {
+            $config['typeSettings'] = $mapping->typeSettings;
+        }
 
         foreach (['instructions', 'translationMethod', 'translationKeyFormat', 'searchable', 'required', 'tip', 'warning', 'groupId'] as $property) {
             try {

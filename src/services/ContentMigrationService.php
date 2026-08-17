@@ -30,6 +30,14 @@ class ContentMigrationService extends Component
         $batchSize = (int)($options['batchSize'] ?? 100);
 
         foreach ($audit->fields as $fieldAudit) {
+            if (!$fieldAudit->sourcePluginAvailable) {
+                $result->recordError([
+                    'field' => $fieldAudit->handle,
+                    'reason' => 'Typed Link Field must be installed and enabled so its values can be hydrated before content migration.',
+                ]);
+                continue;
+            }
+
             if ($fieldAudit->mapping->status === MappingDecision::STATUS_UNSUPPORTED) {
                 $result->addSkipped([
                     'field' => $fieldAudit->handle,
@@ -47,7 +55,8 @@ class ContentMigrationService extends Component
                 continue;
             }
 
-            if (!$fieldMapping->targetFieldId || $this->findFieldByHandle($fieldMapping->targetHandle) === null) {
+            $targetField = $this->findFieldByHandle($fieldMapping->targetHandle);
+            if (!$fieldMapping->targetFieldId || !$targetField instanceof \craft\fields\Link) {
                 $result->recordError([
                     'field' => $fieldAudit->handle,
                     'reason' => sprintf(
@@ -99,10 +108,14 @@ class ContentMigrationService extends Component
                                 continue;
                             }
 
-                            $conversion = $this->convertHyperValue($value, $element->siteId);
+                            $conversion = $this->convertSourceValue($fieldAudit, $value, $element->siteId);
+                            if ($conversion['status'] === 'ok') {
+                                $conversion = $this->validateTargetPayload($conversion, $targetField, $fieldAudit->sourceKind);
+                            }
                             if ($conversion['status'] === 'unsupported') {
                                 $fieldHadWarnings = true;
-                                $this->recordWarning($result, $options, $fieldAudit->handle, $fieldAudit->uid, $element, $conversion['warnings'], $conversion['backup']);
+                                $backupPath = $this->writeWarningBackup($result, $options, $fieldAudit->handle, $element, $conversion['backup']);
+                                $this->recordWarning($result, $options, $fieldAudit->handle, $fieldAudit->uid, $element, $conversion['warnings'], $conversion['backup'], $backupPath);
                                 continue;
                             }
 
@@ -196,6 +209,7 @@ class ContentMigrationService extends Component
             ];
         }
 
+        $targetField = $this->findFieldByHandle($fieldMapping->targetHandle);
         $checked = 0;
         $unverified = [];
         foreach ($this->buildElementQueries($fieldAudit->containers) as $query) {
@@ -215,7 +229,16 @@ class ContentMigrationService extends Component
                     }
 
                     $checked++;
-                    $conversion = $this->convertHyperValue($value, $element->siteId);
+                    $conversion = $this->convertSourceValue($fieldAudit, $value, $element->siteId);
+                    if ($conversion['status'] === 'ok') {
+                        $conversion = $targetField instanceof \craft\fields\Link
+                            ? $this->validateTargetPayload($conversion, $targetField, $fieldAudit->sourceKind)
+                            : [
+                                'status' => 'unsupported',
+                                'warnings' => [sprintf('Prepared target field `%s` is missing.', $fieldMapping->targetHandle)],
+                                'backup' => $conversion['backup'],
+                            ];
+                    }
                     if (
                         $conversion['status'] !== 'ok' ||
                         $conversion['warnings'] !== [] ||
@@ -260,7 +283,7 @@ class ContentMigrationService extends Component
         $queries = [];
         foreach (array_keys($classes) as $class) {
             /** @var ElementQuery $query */
-            $query = $class::find()->status(null)->site('*')->drafts(null)->provisionalDrafts(null)->trashed(null);
+            $query = $class::find()->status(null)->site('*')->drafts(null)->revisions(null)->provisionalDrafts(null)->trashed(null);
             $queries[] = $query;
         }
 
@@ -562,10 +585,11 @@ class ContentMigrationService extends Component
         string $sourceFieldUid,
         ElementInterface $element,
         array $warnings,
-        array $backup
+        array $backup,
+        ?string $backupPath = null
     ): void {
         if (empty($options['dryRun'])) {
-            LinkMigrator::$plugin->getState()->markWarning('content', $fieldHandle, $sourceFieldUid, $element, $warnings, $backup);
+            LinkMigrator::$plugin->getState()->markWarning('content', $fieldHandle, $sourceFieldUid, $element, $warnings, $backup, $backupPath);
         }
 
         $result->addWarning([
@@ -573,6 +597,22 @@ class ContentMigrationService extends Component
             'elementId' => $element->id,
             'warnings' => $warnings,
         ]);
+    }
+
+    private function writeWarningBackup(
+        ContentMigrationResult $result,
+        array $options,
+        string $fieldHandle,
+        ElementInterface $element,
+        array $backup
+    ): ?string {
+        if (!empty($options['dryRun']) || empty($options['createBackup'])) {
+            return null;
+        }
+
+        $backupPath = LinkMigrator::$plugin->getState()->writeBackup('content', $fieldHandle, $element, $backup);
+        $result->addBackup($backupPath);
+        return $backupPath;
     }
 
     private function elementKey(ElementInterface $element): string
@@ -646,8 +686,23 @@ class ContentMigrationService extends Component
             return true;
         }
 
+        if (
+            is_array($value) &&
+            isset($value['type']) &&
+            empty($value['linkedUrl']) &&
+            empty($value['linkedId']) &&
+            !isset($value['linkValue']) &&
+            !isset($value['url'])
+        ) {
+            return true;
+        }
+
         if (is_object($value) && method_exists($value, 'isEmpty')) {
             return (bool)$value->isEmpty();
+        }
+
+        if (is_object($value) && method_exists($value, 'isEditorEmpty')) {
+            return (bool)$value->isEditorEmpty();
         }
 
         return false;
@@ -764,6 +819,211 @@ class ContentMigrationService extends Component
             'warnings' => $warnings,
             'backup' => $backup,
         ];
+    }
+
+    private function convertSourceValue(FieldAudit $fieldAudit, mixed $value, ?int $elementSiteId): array
+    {
+        $conversion = $fieldAudit->sourceKind === 'typed-link'
+            ? $this->convertTypedLinkValue($value, $elementSiteId)
+            : $this->convertHyperValue($value, $elementSiteId);
+
+        if ($fieldAudit->sourceKind === 'typed-link' && $conversion['status'] === 'ok') {
+            $allowCustomText = $fieldAudit->rawSettings['allowCustomText'] ?? true;
+            $defaultText = $fieldAudit->rawSettings['defaultText'] ?? '';
+            if (!$allowCustomText) {
+                unset($conversion['payload']['label']);
+                $conversion['summary']['label'] = null;
+            }
+            if (
+                is_scalar($defaultText) &&
+                trim((string)$defaultText) !== '' &&
+                (!$allowCustomText || empty($conversion['payload']['label']))
+            ) {
+                $site = Craft::$app && is_numeric($elementSiteId)
+                    ? Craft::$app->getSites()->getSiteById((int)$elementSiteId)
+                    : null;
+                $label = Craft::t('site', (string)$defaultText, [], $site?->language);
+                $conversion['payload']['label'] = $label;
+                $conversion['summary']['label'] = $label;
+            }
+        }
+
+        if (
+            $conversion['status'] === 'ok' &&
+            !empty($fieldAudit->rawSettings['autoNoReferrer']) &&
+            ($conversion['payload']['target'] ?? null) === '_blank'
+        ) {
+            $conversion['payload']['rel'] = 'noopener noreferrer';
+        }
+
+        return $conversion;
+    }
+
+    private function validateTargetPayload(array $conversion, \craft\fields\Link $targetField, string $sourceKind): array
+    {
+        $payload = $conversion['payload'];
+        $type = $payload['type'] ?? null;
+        if (!is_string($type) || !in_array($type, $targetField->types, true)) {
+            return [
+                'status' => 'unsupported',
+                'warnings' => [sprintf('Prepared native Link field does not allow the %s link type.', (string)$type)],
+                'backup' => $conversion['backup'],
+            ];
+        }
+
+        if (in_array($type, ['email', 'tel', 'url'], true)) {
+            $linkTypeClass = \craft\fields\Link::types()[$type] ?? null;
+            $linkType = $linkTypeClass ? new $linkTypeClass($targetField->typeSettings[$type] ?? []) : null;
+            $value = $payload['value'] ?? null;
+            $error = null;
+            $normalized = is_scalar($value) && $linkType ? $linkType->normalizeValue((string)$value) : '';
+            if (
+                !is_scalar($value) ||
+                !$linkType ||
+                !$linkType->validateValue($normalized, $error) ||
+                strlen($normalized) > $targetField->maxLength
+            ) {
+                return [
+                    'status' => 'unsupported',
+                    'warnings' => [$error ?: sprintf('Prepared native Link field rejects the %s value.', $type)],
+                    'backup' => $conversion['backup'],
+                ];
+            }
+            $payload['value'] = $normalized;
+            $conversion['summary']['value'] = $normalized;
+        }
+
+        if ($sourceKind === 'typed-link') {
+            if (isset($payload['urlSuffix'])) {
+                if (!is_scalar($payload['urlSuffix'])) {
+                    unset($payload['urlSuffix']);
+                    $conversion['warnings'][] = 'Typed Link custom query could not be represented and was preserved in the optional backup.';
+                } else {
+                    $payload['urlSuffix'] = trim((string)$payload['urlSuffix']);
+                    if ($payload['urlSuffix'] !== '' && !str_starts_with($payload['urlSuffix'], '#') && !str_starts_with($payload['urlSuffix'], '?')) {
+                        $payload['urlSuffix'] = '?' . $payload['urlSuffix'];
+                    }
+                }
+            }
+
+            if (!property_exists($targetField, 'showLabelField') || !$targetField->showLabelField) {
+                if (isset($payload['label'])) {
+                    $conversion['warnings'][] = 'Prepared native Link field cannot store the Typed Link label; it was preserved in the optional backup.';
+                }
+                unset($payload['label']);
+            }
+
+            $advancedFields = property_exists($targetField, 'advancedFields') ? $targetField->advancedFields : [];
+            foreach (['target', 'urlSuffix', 'title', 'ariaLabel', 'rel'] as $attribute) {
+                $supported = in_array($attribute, $advancedFields, true)
+                    || ($attribute === 'target' && property_exists($targetField, 'showTargetField') && $targetField->showTargetField)
+                    || ($attribute === 'target' && method_exists($targetField, 'getShowTargetField') && $targetField->getShowTargetField());
+                if (!$supported) {
+                    if (isset($payload[$attribute])) {
+                        $conversion['warnings'][] = sprintf(
+                            'Prepared native Link field cannot store Typed Link %s; it was preserved in the optional backup.',
+                            $attribute,
+                        );
+                    }
+                    unset($payload[$attribute]);
+                }
+            }
+        }
+
+        $conversion['payload'] = $payload;
+        return $conversion;
+    }
+
+    private function convertTypedLinkValue(mixed $value, ?int $elementSiteId = null): array
+    {
+        $backup = $this->backupPayload($value);
+        $warnings = [];
+        $payload = $this->readTypedLinkProperty($value, 'payload');
+        if (is_string($payload)) {
+            $decoded = $this->decodeSerializedJson($payload);
+            $payload = is_array($decoded) ? $decoded : [];
+        }
+        $payload = is_array($payload) ? $payload : [];
+
+        $type = $this->normalizeType($this->readTypedLinkProperty($value, 'type'));
+        $linkedSiteId = $this->readTypedLinkProperty($value, 'linkedSiteId') ?? $elementSiteId;
+        $linkedId = $this->readTypedLinkProperty($value, 'linkedId');
+        $linkValue = $this->readTypedLinkProperty($value, 'linkedUrl');
+        $element = $this->readElement($value) ?? $this->resolveLinkedElement($type, $linkedId, $linkedSiteId);
+
+        $nativeType = match ($type) {
+            'asset' => 'asset',
+            'category' => 'category',
+            'email' => 'email',
+            'entry' => 'entry',
+            'tel', 'phone' => 'tel',
+            'url', 'custom' => 'url',
+            default => null,
+        };
+
+        if ($nativeType === null) {
+            return [
+                'status' => 'unsupported',
+                'warnings' => [sprintf('Unsupported Typed Link type for content migration: %s', $type ?: 'unknown')],
+                'backup' => $backup,
+            ];
+        }
+
+        if (in_array($nativeType, ['asset', 'category', 'entry'], true)) {
+            if (!$element) {
+                return [
+                    'status' => 'unsupported',
+                    'warnings' => ['Linked element is missing or invalid.'],
+                    'backup' => $backup,
+                ];
+            }
+
+            if (is_numeric($linkedSiteId) && is_numeric($elementSiteId) && (int)$linkedSiteId !== (int)$elementSiteId) {
+                $warnings[] = sprintf(
+                    'Typed Link linkedSiteId %d differs from owner siteId %d; Craft native Link stores the element ID only.',
+                    (int)$linkedSiteId,
+                    (int)$elementSiteId
+                );
+            }
+            $linkValue = $element->id;
+        } elseif (!is_string($linkValue) || trim($linkValue) === '') {
+            return [
+                'status' => 'unsupported',
+                'warnings' => [sprintf('Typed Link %s value is empty or invalid for a native Link field.', $type)],
+                'backup' => $backup,
+            ];
+        }
+
+        $advanced = [
+            'label' => $payload['customText'] ?? $this->readTypedLinkProperty($value, 'customText'),
+            'target' => $payload['target'] ?? $this->readTypedLinkProperty($value, 'target'),
+            'urlSuffix' => $payload['customQuery'] ?? $this->readTypedLinkProperty($value, 'customQuery'),
+            'title' => $payload['title'] ?? $this->readTypedLinkProperty($value, 'title'),
+            'ariaLabel' => $payload['ariaLabel'] ?? $this->readTypedLinkProperty($value, 'ariaLabel'),
+        ];
+        $resultPayload = array_filter([
+            'type' => $nativeType,
+            'value' => $linkValue,
+            ...$advanced,
+        ], static fn($item) => $item !== null && $item !== '');
+
+        return [
+            'status' => 'ok',
+            'payload' => $resultPayload,
+            'summary' => [
+                'type' => $nativeType,
+                'value' => $linkValue,
+                'label' => $advanced['label'],
+                'target' => $advanced['target'],
+            ],
+            'warnings' => $warnings,
+            'backup' => $backup,
+        ];
+    }
+
+    private function readTypedLinkProperty(mixed $value, string $key): mixed
+    {
+        return $this->readHyperProperty($value, [$key]);
     }
 
     private function normalizeType(mixed $type): string

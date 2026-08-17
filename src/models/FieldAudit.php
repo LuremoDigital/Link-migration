@@ -10,6 +10,8 @@ class FieldAudit extends Model
     public string $uid;
     public string $handle;
     public string $name;
+    public string $sourceKind = 'hyper';
+    public bool $sourcePluginAvailable = true;
     public bool $multi = false;
     public array $allowedHyperTypes = [];
     public array $customFieldLayouts = [];

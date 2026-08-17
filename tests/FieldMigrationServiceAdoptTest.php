@@ -142,6 +142,33 @@ final class FieldMigrationServiceAdoptTest extends TestCase
         self::assertStringContainsString('does not allow link type(s) the mapping needs: entry', $result->warnings[0]['warnings'][0]);
     }
 
+    public function testWarnsWhenTargetCannotStoreMappedLabelAndAdvancedFields(): void
+    {
+        $state = $this->stateService();
+        $service = $this->service($state, [
+            'ctaLinkNative' => [
+                'id' => 42,
+                'uid' => 'target-uid',
+                'handle' => 'ctaLinkNative',
+                'types' => ['url'],
+                'showLabelField' => false,
+                'showTargetField' => false,
+                'advancedFields' => [],
+            ],
+        ]);
+        $audit = $this->audit(['ctaLink']);
+        $audit->fields[0]->mapping->showLabelField = true;
+        $audit->fields[0]->mapping->advancedFields = ['target', 'title'];
+
+        $result = $service->adoptPrepared($audit, []);
+        $warnings = $result->warnings[0]['warnings'];
+
+        self::assertCount(3, $warnings);
+        self::assertStringContainsString('label', $warnings[0]);
+        self::assertStringContainsString('target', $warnings[1]);
+        self::assertStringContainsString('title', $warnings[2]);
+    }
+
     public function testWarnsOnRerunWhenRecordedTargetNoLongerAllowsMappedTypes(): void
     {
         $existing = new FieldMapping([

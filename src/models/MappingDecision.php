@@ -12,6 +12,9 @@ class MappingDecision extends Model
 
     public string $status = self::STATUS_UNSUPPORTED;
     public array $craftLinkTypes = [];
+    public array $typeSettings = [];
+    public bool $showLabelField = false;
+    public bool $showTargetField = false;
     public array $advancedFields = [];
     public array $warnings = [];
     public array $unsupportedReasons = [];
