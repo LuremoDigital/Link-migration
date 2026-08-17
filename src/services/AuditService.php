@@ -752,7 +752,7 @@ class AuditService extends Component
             return false;
         }
 
-        if (!empty($mismatch['sourceScoped']) && !$this->lineContainsSourceReference($line, $sourceReferences)) {
+        if (!empty($mismatch['sourceScoped']) && !$this->lineContainsSourceReference($this->sourceContext($lines, $lineNumber), $sourceReferences)) {
             return false;
         }
 
@@ -785,19 +785,44 @@ class AuditService extends Component
     private function sourceReferences(array $lines, array $sourceFieldHandles): array
     {
         $references = $sourceFieldHandles;
-        foreach ($lines as $line) {
-            if (!$this->lineContainsSourceReference($line, $sourceFieldHandles)) {
-                continue;
-            }
-
-            foreach (['/\bset\s+([A-Za-z_][A-Za-z0-9_]*)\s*=/', '/(\$[A-Za-z_][A-Za-z0-9_]*)\s*=/'] as $pattern) {
-                if (preg_match($pattern, $line, $match)) {
-                    $references[] = $match[1];
-                }
+        $contents = implode('', $lines);
+        $assignments = [];
+        foreach (['/\bset\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)(?:%}|$)/s', '/(\$[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?);/s'] as $pattern) {
+            preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER);
+            foreach ($matches as $match) {
+                $assignments[] = [$match[1], $match[2]];
             }
         }
 
+        do {
+            $added = false;
+            foreach ($assignments as [$alias, $expression]) {
+                if (!in_array($alias, $references, true) && $this->lineContainsSourceReference($expression, $references)) {
+                    $references[] = $alias;
+                    $added = true;
+                }
+            }
+        } while ($added);
+
         return array_values(array_unique($references));
+    }
+
+    private function sourceContext(array $lines, int $lineNumber): string
+    {
+        $context = $lines[$lineNumber];
+        for ($index = $lineNumber - 1, $minimum = max(0, $lineNumber - 20); $index >= $minimum; $index--) {
+            $previous = $lines[$index];
+            if (str_contains($previous, ';') || str_contains($previous, '}}') || str_contains($previous, '%}')) {
+                break;
+            }
+
+            $context = $previous . $context;
+            if (str_contains($previous, '{{') || str_contains($previous, '{%') || str_contains($previous, '<?php')) {
+                break;
+            }
+        }
+
+        return $context;
     }
 
     private function lineContainsSourceReference(string $line, array $sourceReferences): bool

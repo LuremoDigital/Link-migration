@@ -266,6 +266,31 @@ PHP,
         self::assertSame(['getText(', 'getTitle('], $patterns);
     }
 
+    public function testMismatchScannerFollowsMultilineReceiversAndChainedAliases(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta
+    .getText() }}
+{% set link =
+    entry.cta
+%}
+{% set nested = link %}
+{{ nested.getTitle() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link =
+    $entry->cta;
+$nested = $link;
+$nested
+    ->getCustomText();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame(['getText(', 'getTitle(', 'getCustomText('], $patterns);
+    }
+
     public function testTypedLinkTypeExtractionHonorsDisabledRowsAndSafeDefault(): void
     {
         $method = new \ReflectionMethod(AuditService::class, 'extractLinkTypes');
