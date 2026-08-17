@@ -4,19 +4,7 @@ Link Migrator provides a safe, staged workflow for migrating **Verbb Hyper** fie
 
 Instead of replacing fields or modifying existing content in place, Link Migrator creates parallel native Link fields, copies supported values into them, verifies the results, and only removes the original Hyper fields from field layouts once the migration is ready to complete. Your original Hyper fields and source values remain intact throughout the workflow.
 
-The migration can be managed through a guided Control Panel wizard or automated using Craft’s CLI commands.
-
-## Guided Control Panel workflow
-
-The Control Panel wizard walks you through each stage:
-
-1. **Audit** your site to discover Hyper fields, supported link types, unsupported or lossy values, and likely template API mismatches.
-2. **Prepare native fields** by creating Craft Link fields beside the original Hyper fields in your field layouts.
-3. **Migrate content** by copying supported Hyper values into the prepared native fields.
-4. **Review template impact** to identify common Hyper-specific Twig and PHP APIs that may need updating.
-5. **Finalize the cutover** by removing the original Hyper fields from field layouts after all content has been verified.
-
-After each stage, the wizard refreshes its audit and workflow status so you can review the results before continuing.
+The migration is managed through Craft’s CLI commands, making it suitable for local runs, CI, and repeatable deployment workflows.
 
 ## Safe, reversible migration process
 
@@ -66,9 +54,9 @@ The scanner reports likely mismatches and suggests the corresponding native Link
 
 The scanner is intended as a migration aid and review checklist. It does not replace testing your templates, integrations, GraphQL queries, or frontend output.
 
-## Control Panel and CLI support
+## CLI workflow
 
-Use the Control Panel wizard for a guided, visual migration experience, or use the CLI for scripted deployments, CI checks, dry runs, individual field migrations, and repeatable environment workflows. Before any non-dry run, back up your database and project config. Preview each write stage first, then run the corresponding command with explicit confirmation.
+Use the CLI for scripted deployments, CI checks, dry runs, individual field migrations, and repeatable environment workflows. Before any non-dry run, back up your database and project config. Preview each write stage first, then run the corresponding command with explicit confirmation.
 
 ```bash
 php craft link-migrator/migrate/audit --dry-run=1

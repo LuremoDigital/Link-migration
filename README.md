@@ -5,7 +5,7 @@
 <h1 align="center">Link Migrator</h1>
 
 <p align="center">
-  Migrate Verbb Hyper fields and content to Craft CMS native Link fields — safely, in stages, with a guided Control Panel workflow.
+  Migrate Verbb Hyper fields and content to Craft CMS native Link fields — safely, in stages, from the CLI.
 </p>
 
 <p align="center">
@@ -18,22 +18,22 @@
 
 ---
 
-**Link Migrator** gives Craft teams a guided path from [Verbb Hyper](https://plugins.craftcms.com/hyper) to Craft's native Link field. Start in the Craft Control Panel, review the audit, prepare parallel native fields, migrate content with backups, review template impact, and finalize the layout cutover when everything is ready.
+**Link Migrator** gives Craft teams a staged CLI workflow from [Verbb Hyper](https://plugins.craftcms.com/hyper) to Craft's native Link field. Audit, prepare parallel native fields, migrate content with backups, review template impact, and finalize the layout cutover when everything is ready.
 
-The original Hyper fields and values remain intact throughout the migration. Control Panel write actions require explicit confirmation, CLI write commands require `--force=1`, and each migration stage produces reports you can inspect before continuing.
+The original Hyper fields and values remain intact throughout the migration. CLI write commands require `--force=1`, and each migration stage produces reports you can inspect before continuing.
 
 Link Migrator is an independent product and is not affiliated with Verbb. Hyper is a plugin by Verbb.
 
 ## Features
 
-- **Control Panel first**: follow the guided Craft CP wizard from audit to finalization.
+- **CLI only**: run the staged workflow locally, in CI, or from deployment scripts.
 - **Audit before writing**: inspect Hyper fields, supported mappings, lossy cases, and template API mismatches.
 - **Keep source data intact**: prepare parallel native Link fields instead of replacing Hyper fields in place.
 - **Migrate safely**: process content in batches, resume interrupted runs, and optionally back up each source value.
 - **Verify before cutover**: re-read migrated content and refuse finalization while non-empty source values remain unverified.
 - **Review template impact**: find common Hyper-only properties and methods that need updating.
 - **Track every run**: write human-readable logs and JSON reports to Craft's runtime storage.
-- **Automate with the CLI**: run the same staged workflow from deployment scripts when needed.
+- **Automate safely**: use dry runs, explicit write confirmation, and reports in deployment scripts.
 
 ## Requirements
 
@@ -53,93 +53,81 @@ php craft plugin/install link-migrator
 
 Link Migrator is free to use, with every feature included and no edition split.
 
-## Start in the Control Panel
+## Migration Walkthrough
 
-Open **Link Migrator** in the Craft Control Panel, or go directly to `/admin/link-migrator`.
-
-![Link Migrator Control Panel wizard](https://pluginscreenshots.craft-cdn.com/link-migrator/_550xAUTO_crop_center-center_none/cp-wizard.png?1784221216)
-
-The wizard walks through the migration in five stages:
-
-1. **Audit**: read-only scan of Hyper fields, supported mappings, warnings, and template mismatches.
-2. **Prepare native fields**: create native Link fields beside the source Hyper fields. Requires admin access and a confirmation checkbox.
-3. **Migrate content**: copy Hyper values into prepared native fields, write backups, and verify saved values.
-4. **Review template impact**: inspect likely Hyper-only Twig or PHP API usage before cutover.
-5. **Finalize**: remove Hyper fields from field layouts after live content is verified. Hyper fields themselves are not deleted.
-
-For most sites, this is the recommended workflow. Use the CLI when you want dry runs, single-field runs, CI checks, or scripted deployment steps.
-
-## CLI Workflow
-
-Before the first write, back up your database and project config. Then run each stage explicitly:
+Use this sequence for a single environment. Back up the database and project config first, keep Hyper installed, and inspect each generated report before proceeding.
 
 ```bash
-# 1. Inspect fields and template impact.
-php craft link-migrator/migrate/audit --dry-run=1
+# 1. Audit is read-only. Fix or explicitly accept anything in its report.
+php craft link-migrator/migrate/audit
 php craft link-migrator/migrate/mismatches
 
-# 2. Preview and prepare parallel native fields.
+# 2. Preview, then create native Link fields beside the Hyper fields.
 php craft link-migrator/migrate/prepare-fields --dry-run=1
 php craft link-migrator/migrate/prepare-fields --force=1
 
-# 3. Preview and migrate content with backups.
-php craft link-migrator/migrate/content --dry-run=1 --create-backup=1
+# 3. Preview, then copy and verify content. Backups are written only by
+#    the non-dry run.
+php craft link-migrator/migrate/content --dry-run=1
 php craft link-migrator/migrate/content --force=1 --create-backup=1 --batch-size=100
-
-# 4. Check progress, then preview and finalize the layout cutover.
 php craft link-migrator/migrate/status
+
+# 4. Update templates for native Link values, then scan again. A non-zero
+#    exit from mismatches means potential changes were found and must be reviewed.
 php craft link-migrator/migrate/mismatches
+
+# 5. Preview, then remove Hyper fields from layouts. The fields and their
+#    source values are not deleted.
 php craft link-migrator/migrate/finalize --dry-run=1
 php craft link-migrator/migrate/finalize --force=1 --acknowledge-mismatches=1
 ```
 
-Run `php craft project-config/apply` separately if your deployment workflow requires it.
+`audit`, `status`, and `mismatches` do not change fields, content, or migration mappings. `mismatches` intentionally exits non-zero when it finds potential Hyper API usage. Every non-dry-run write command requires `--force=1`; `finalize` additionally requires `--acknowledge-mismatches=1` when the scanner finds mismatches. A successful `content` run can still return non-zero for warnings, so resolve its report before finalizing.
 
 ### Migrate one field
 
-Use the source Hyper field handle with `--field`:
+Pass the source Hyper field handle to every stage:
 
 ```bash
+php craft link-migrator/migrate/audit --field=ctaLink
 php craft link-migrator/migrate/prepare-fields --field=ctaLink --force=1
 php craft link-migrator/migrate/content --field=ctaLink --force=1 --create-backup=1
+php craft link-migrator/migrate/status --field=ctaLink
 php craft link-migrator/migrate/finalize --field=ctaLink --force=1 --acknowledge-mismatches=1
 ```
 
 ## Multi-Environment Deployment
 
-Field definitions and layout placements live in Craft's project config, so `prepare-fields` and `finalize` deploy as YAML. Content and the plugin's migration state live in each environment's database, so content migration must run in every environment.
-
-The recommended flow for a local → production pipeline (for example Docker with `project-config/apply` on deploy):
+`prepare-fields` and `finalize` change field definitions and layouts, so run them only in the environment that authors project config. Commit and deploy the resulting project-config changes. Content and the plugin's mapping state are database data, so run `adopt-prepared` and `content` in every deployed environment.
 
 ```bash
-# 1. Locally: audit, prepare fields, migrate local content, and verify.
+# 1. In the project-config authoring environment: prepare fields and migrate
+#    its local content. Commit the generated project-config changes.
 php craft link-migrator/migrate/prepare-fields --force=1
 php craft link-migrator/migrate/content --force=1 --create-backup=1
 php craft link-migrator/migrate/status
-# Commit the project config changes and deploy. Do not deploy template
-# changes that render the native fields yet — they are still empty in
-# production at this point.
 
-# 2. On production, after project config is applied: adopt the deployed
-#    native fields so this environment knows the source-to-target mappings.
+# 2. First deploy: apply the prepared-field project config everywhere, but
+#    keep templates rendering Hyper fields. On each downstream environment:
+php craft project-config/apply
 php craft link-migrator/migrate/adopt-prepared --dry-run=1
 php craft link-migrator/migrate/adopt-prepared --force=1
-
-# 3. On production: migrate content and verify.
+php craft link-migrator/migrate/content --dry-run=1
 php craft link-migrator/migrate/content --force=1 --create-backup=1
 php craft link-migrator/migrate/status
 
-# 4. Locally: update templates, finalize, then commit and deploy the
-#    project config and template changes together.
+# 3. Only after every environment's content is verified: update templates in
+#    the authoring environment, then finalize and commit its project config.
 php craft link-migrator/migrate/mismatches
+php craft link-migrator/migrate/finalize --dry-run=1
 php craft link-migrator/migrate/finalize --force=1 --acknowledge-mismatches=1
+
+# 4. Second deploy: deploy the finalized project config and native-Link
+#    template changes together.
+php craft project-config/apply
 ```
 
-Local content migration in step 1 is required: `finalize` refuses fields whose content has not been migrated and verified in the environment where it runs. Ship template updates that render the native fields with the second deploy, after every environment has migrated its content — deploying them earlier would render empty native fields in production.
-
-`adopt-prepared` matches each Hyper field to a native Link field named `<sourceHandle>Native` (use `--field` together with `--target` for a different handle) and records the mapping without creating or changing any fields, so it is safe with `allowAdminChanges` disabled. Fields that already have a mapping in that environment are skipped, the command warns when the matched field does not allow the link types the mapping needs, and it refuses to guess when several candidate handles exist (for example `ctaLinkNative` and `ctaLinkNative2`) — pass `--field` and `--target` to resolve those explicitly. It exits non-zero when nothing was adopted or previously recorded, so a misconfigured deploy fails loudly in scripts.
-
-Deploy the finalize project config only after `status` is clean in every environment: applying YAML replays the layout cutover without the plugin's content verification, so finalizing before an environment has migrated its content would expose empty native fields there.
+`adopt-prepared` records the mapping for a deployed native field without changing fields or layouts, so it can run where `allowAdminChanges` is disabled. It expects `<sourceHandle>Native`; use `--field` and `--target` for a different handle. Do not deploy the final layout change until content is verified everywhere: project-config application cannot perform that per-environment verification for you.
 
 ## How the Migration Works
 
@@ -217,7 +205,7 @@ With `--create-backup=1`, content migration writes per-element source payloads t
 storage/runtime/link-migrator/backups/
 ```
 
-Resumable per-element state is stored in `{{%linkmigrator_migrations}}`. Prepared source-to-target mappings are stored in `{{%linkmigrator_fieldmappings}}` only after `prepare-fields` or `adopt-prepared` writes them. Audit, status, and the Control Panel index remain read-only.
+Resumable per-element state is stored in `{{%linkmigrator_migrations}}`. Prepared source-to-target mappings are stored in `{{%linkmigrator_fieldmappings}}` only after `prepare-fields` or `adopt-prepared` writes them. Audit and status remain read-only.
 
 Use the informational summary at any time:
 
@@ -245,12 +233,5 @@ This reports migrated, skipped, warning, error, and backup counts. It does not r
 ## License
 
 Link Migrator is released under the [MIT License](LICENSE.txt).
-
----
-
-## Screenshots
-
-<p align="center"><img src="https://pluginscreenshots.craft-cdn.com/link-migrator/_550xAUTO_crop_center-center_none/cp-wizard.png?1784221216" alt="Link Migrator Control Panel wizard" width="800"></p>
-<p align="center"><em>The migration wizard — audit, prepare, migrate, review, and finalize in one guided workflow.</em></p>
 
 <p align="center">Built by <a href="https://github.com/LuremoDigital">Luremo</a> for the Craft CMS community.</p>

@@ -5,9 +5,6 @@ namespace luremo\linkmigrator;
 use Craft;
 use craft\base\Plugin;
 use craft\console\Application as ConsoleApplication;
-use craft\events\RegisterUrlRulesEvent;
-use craft\web\UrlManager;
-use yii\base\Event;
 use luremo\linkmigrator\services\AuditService;
 use luremo\linkmigrator\services\ContentMigrationService;
 use luremo\linkmigrator\services\CutoverService;
@@ -20,8 +17,7 @@ class LinkMigrator extends Plugin
 {
     public const HANDLE = 'link-migrator';
 
-    public bool $hasCpSettings = false;
-    public bool $hasCpSection = true;
+    public bool $hasCpSection = false;
     public string $schemaVersion = '1.2.0';
 
     public static self $plugin;
@@ -43,17 +39,6 @@ class LinkMigrator extends Plugin
 
         if (Craft::$app instanceof ConsoleApplication) {
             $this->controllerNamespace = 'luremo\\linkmigrator\\console\\controllers';
-        } else {
-            Event::on(
-                UrlManager::class,
-                UrlManager::EVENT_REGISTER_CP_URL_RULES,
-                static function(RegisterUrlRulesEvent $event) {
-                    $event->rules[static::HANDLE] = static::HANDLE . '/wizard/index';
-                    $event->rules[static::HANDLE . '/prepare'] = static::HANDLE . '/wizard/prepare-fields';
-                    $event->rules[static::HANDLE . '/content'] = static::HANDLE . '/wizard/migrate-content';
-                    $event->rules[static::HANDLE . '/finalize'] = static::HANDLE . '/wizard/finalize';
-                }
-            );
         }
     }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Removed the Control Panel wizard. Link Migrator now exposes its staged migration workflow through CLI commands only.
+
 ## 1.1.0 - 2026-08-17
 
 ### Added
