@@ -297,6 +297,27 @@ PHP,
         self::assertSame(['getText(', 'getTitle(', 'getCustomText('], $patterns);
     }
 
+    public function testMismatchScannerStopsFollowingReassignedAliases(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{% set link = entry.cta %}
+{{ link.getText() }}
+{% set link = page %}
+{{ link.getTitle() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link = $entry->cta;
+$link->getCustomText();
+$link = $page;
+$link->getDefaultText();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame(['getText(', 'getCustomText('], $patterns);
+    }
+
     public function testTypedLinkTypeExtractionHonorsDisabledRowsAndSafeDefault(): void
     {
         $method = new \ReflectionMethod(AuditService::class, 'extractLinkTypes');

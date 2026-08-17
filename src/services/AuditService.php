@@ -714,13 +714,13 @@ class AuditService extends Component
                 if ($contents === false) {
                     continue;
                 }
-                $sourceReferences = $this->sourceReferences($contents, $sourceFieldHandles);
+                $sourceReferences = $this->sourceReferencesByLine($contents, $sourceFieldHandles);
 
                 foreach ($contents as $lineNumber => $line) {
                     foreach (self::MISMATCH_PATTERNS as $mismatch) {
                         foreach ([$mismatch['pattern'], ...($mismatch['aliases'] ?? [])] as $pattern) {
                             $candidate = [...$mismatch, 'pattern' => $pattern];
-                            if (!$this->lineMatchesMismatch($contents, $lineNumber, $candidate, $sourceReferences)) {
+                            if (!$this->lineMatchesMismatch($contents, $lineNumber, $candidate, $sourceReferences[$lineNumber])) {
                                 continue;
                             }
 
@@ -819,29 +819,32 @@ class AuditService extends Component
         return array_values(array_unique($positions));
     }
 
-    private function sourceReferences(array $lines, array $sourceFieldHandles): array
+    private function sourceReferencesByLine(array $lines, array $sourceFieldHandles): array
     {
-        $references = $sourceFieldHandles;
         $contents = implode('', $lines);
-        $assignments = [];
+        $assignmentsByLine = [];
         foreach (['/\bset\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)(?:%}|$)/s', '/(\$[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?);/s'] as $pattern) {
-            preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER);
+            preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
             foreach ($matches as $match) {
-                $assignments[] = [$match[1], $match[2]];
+                $endOffset = $match[0][1] + strlen($match[0][0]);
+                $assignmentLine = substr_count(substr($contents, 0, $endOffset), "\n");
+                $assignmentsByLine[$assignmentLine][] = [$match[1][0], $match[2][0]];
             }
         }
 
-        do {
-            $added = false;
-            foreach ($assignments as [$alias, $expression]) {
-                if (!in_array($alias, $references, true) && $this->lineContainsSourceReference($expression, $references)) {
+        $references = $sourceFieldHandles;
+        $referencesByLine = [];
+        foreach (array_keys($lines) as $lineNumber) {
+            foreach ($assignmentsByLine[$lineNumber] ?? [] as [$alias, $expression]) {
+                $references = array_values(array_diff($references, [$alias]));
+                if ($this->lineContainsSourceReference($expression, $references)) {
                     $references[] = $alias;
-                    $added = true;
                 }
             }
-        } while ($added);
+            $referencesByLine[$lineNumber] = array_values(array_unique($references));
+        }
 
-        return array_values(array_unique($references));
+        return $referencesByLine;
     }
 
     private function sourceContext(array $lines, int $lineNumber): string
