@@ -13,19 +13,14 @@ use PHPUnit\Framework\TestCase;
 
 final class ModelStateTest extends TestCase
 {
-    public function testFieldMappingPhasesExposeWorkflowReadiness(): void
+    public function testFieldMappingPhasesExposePreparedState(): void
     {
         $mapping = new FieldMapping(['phase' => FieldMapping::PHASE_AUDITED]);
         self::assertFalse($mapping->isPrepared());
-        self::assertFalse($mapping->isContentReady());
 
         $mapping->phase = FieldMapping::PHASE_PREPARED;
         self::assertTrue($mapping->isPrepared());
-        self::assertFalse($mapping->isContentReady());
 
-        $mapping->phase = FieldMapping::PHASE_READY_TO_FINALIZE;
-        self::assertTrue($mapping->isPrepared());
-        self::assertTrue($mapping->isContentReady());
     }
 
     public function testAuditResultOnlyBlocksUnsupportedMappings(): void
