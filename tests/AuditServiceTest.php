@@ -318,6 +318,54 @@ PHP,
         self::assertSame(['getText(', 'getCustomText('], $patterns);
     }
 
+    public function testMismatchScannerHandlesNullsafeReceiversAndAssignmentEdges(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta?.getText() }}
+{{ entry.cta?.defaultText }}
+{% set cta = entry.cta %}
+{{ cta.getTitle() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link = $entry->cta;
+if ($link === null) {}
+$link->getCustomText();
+$link = $link->getDefaultText();
+$other = $entry->cta; $other->getIntrinsicText(); $other = $page;
+PHP,
+        ]), 'pattern');
+
+        self::assertSame([
+            'getText(',
+            '.defaultText',
+            'getTitle(',
+            'getCustomText(',
+            'getDefaultText(',
+            'getIntrinsicText(',
+        ], $patterns);
+    }
+
+    public function testMismatchScannerIgnoresCommentedSourceCalls(): void
+    {
+        self::assertSame([], $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{#
+{{ entry.cta.getText() }}
+#}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+/*
+$entry->cta->getTitle();
+*/
+// $entry->cta->getCustomText();
+# $entry->cta->getDefaultText();
+PHP,
+        ]));
+    }
+
     public function testTypedLinkTypeExtractionHonorsDisabledRowsAndSafeDefault(): void
     {
         $method = new \ReflectionMethod(AuditService::class, 'extractLinkTypes');

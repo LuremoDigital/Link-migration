@@ -714,13 +714,14 @@ class AuditService extends Component
                 if ($contents === false) {
                     continue;
                 }
-                $sourceReferences = $this->sourceReferencesByLine($contents, $sourceFieldHandles);
+                $scanContents = $this->withoutCommentLines($contents);
+                $sourceReferences = $this->sourceReferencesByLine($scanContents, $sourceFieldHandles);
 
-                foreach ($contents as $lineNumber => $line) {
+                foreach ($scanContents as $lineNumber => $line) {
                     foreach (self::MISMATCH_PATTERNS as $mismatch) {
                         foreach ([$mismatch['pattern'], ...($mismatch['aliases'] ?? [])] as $pattern) {
                             $candidate = [...$mismatch, 'pattern' => $pattern];
-                            if (!$this->lineMatchesMismatch($contents, $lineNumber, $candidate, $sourceReferences[$lineNumber])) {
+                            if (!$this->lineMatchesMismatch($scanContents, $lineNumber, $candidate, $sourceReferences[$lineNumber])) {
                                 continue;
                             }
 
@@ -730,7 +731,7 @@ class AuditService extends Component
                                 'pattern' => $pattern,
                                 'replacement' => $mismatch['replacement'],
                                 'reason' => $mismatch['reason'],
-                                'snippet' => trim($line),
+                                'snippet' => trim($contents[$lineNumber]),
                             ];
                         }
                     }
@@ -806,8 +807,9 @@ class AuditService extends Component
                 continue;
             }
 
-            $receiver = '(?<![A-Za-z0-9_])' . preg_quote($reference, '/') . '(?![A-Za-z0-9_])';
-            $regex = '/' . $receiver . '(?:[\'\"]\s*[\]\)]\s*)?\s*(?:\.|\?->|->)\s*\K' . preg_quote($member, '/') . '/s';
+            $receiver = (str_starts_with($reference, '$') ? '(?<![A-Za-z0-9_])' : '(?<![A-Za-z0-9_$])')
+                . preg_quote($reference, '/') . '(?![A-Za-z0-9_])';
+            $regex = '/' . $receiver . '(?:[\'\"]\s*[\]\)]\s*)?\s*(?:\?\.|\.|\?->|->)\s*\K' . preg_quote($member, '/') . '/s';
             preg_match_all($regex, $context, $matches, PREG_OFFSET_CAPTURE);
             foreach ($matches[0] as [, $offset]) {
                 if ($offset >= $lineOffset) {
@@ -823,7 +825,7 @@ class AuditService extends Component
     {
         $contents = implode('', $lines);
         $assignmentsByLine = [];
-        foreach (['/\bset\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)(?:%}|$)/s', '/(\$[A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?);/s'] as $pattern) {
+        foreach (['/\bset\s+([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=|>)\s*(.*?)(?:%}|$)/s', '/(\$[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=|>)\s*(.*?);/s'] as $pattern) {
             preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
             foreach ($matches as $match) {
                 $endOffset = $match[0][1] + strlen($match[0][0]);
@@ -835,13 +837,18 @@ class AuditService extends Component
         $references = $sourceFieldHandles;
         $referencesByLine = [];
         foreach (array_keys($lines) as $lineNumber) {
+            $lineReferences = $references;
             foreach ($assignmentsByLine[$lineNumber] ?? [] as [$alias, $expression]) {
-                $references = array_values(array_diff($references, [$alias]));
-                if ($this->lineContainsSourceReference($expression, $references)) {
+                $sourceExpression = $this->lineContainsSourceReference($expression, $references);
+                if (!in_array($alias, $sourceFieldHandles, true)) {
+                    $references = array_values(array_diff($references, [$alias]));
+                }
+                if ($sourceExpression) {
                     $references[] = $alias;
                 }
+                $lineReferences = array_values(array_unique([...$lineReferences, ...$references]));
             }
-            $referencesByLine[$lineNumber] = array_values(array_unique($references));
+            $referencesByLine[$lineNumber] = $lineReferences;
         }
 
         return $referencesByLine;
@@ -865,10 +872,45 @@ class AuditService extends Component
         return $context;
     }
 
+    private function withoutCommentLines(array $lines): array
+    {
+        $blockEnd = null;
+        foreach ($lines as &$line) {
+            $trimmed = ltrim($line);
+            if ($blockEnd !== null) {
+                if (!str_contains($trimmed, $blockEnd)) {
+                    $line = "\n";
+                    continue;
+                }
+                $blockEnd = null;
+                $line = "\n";
+                continue;
+            }
+
+            foreach (['{#' => '#}', '/*' => '*/'] as $start => $end) {
+                if (str_starts_with($trimmed, $start)) {
+                    if (!str_contains($trimmed, $end)) {
+                        $blockEnd = $end;
+                    }
+                    $line = "\n";
+                    continue 2;
+                }
+            }
+
+            if (str_starts_with($trimmed, '//') || str_starts_with($trimmed, '#')) {
+                $line = "\n";
+            }
+        }
+        unset($line);
+
+        return $lines;
+    }
+
     private function lineContainsSourceReference(string $line, array $sourceReferences): bool
     {
         foreach ($sourceReferences as $reference) {
-            if (is_string($reference) && $reference !== '' && preg_match('/(?<![A-Za-z0-9_])' . preg_quote($reference, '/') . '(?![A-Za-z0-9_])/', $line)) {
+            $boundary = str_starts_with((string)$reference, '$') ? '(?<![A-Za-z0-9_])' : '(?<![A-Za-z0-9_$])';
+            if (is_string($reference) && $reference !== '' && preg_match('/' . $boundary . preg_quote($reference, '/') . '(?![A-Za-z0-9_])/', $line)) {
                 return true;
             }
         }
