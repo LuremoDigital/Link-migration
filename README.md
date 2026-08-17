@@ -5,7 +5,7 @@
 <h1 align="center">Link Migrator</h1>
 
 <p align="center">
-  Migrate Verbb Hyper fields and content to Craft CMS native Link fields — safely, in stages, from the CLI.
+  Migrate Verbb Hyper or Typed Link Field fields and content to Craft CMS native Link fields — safely, in stages, from the CLI.
 </p>
 
 <p align="center">
@@ -18,7 +18,7 @@
 
 ---
 
-**Link Migrator** gives Craft teams a staged CLI workflow from [Verbb Hyper](https://plugins.craftcms.com/hyper) to Craft's native Link field. Audit, prepare parallel native fields, migrate content with backups, review template impact, and finalize the layout cutover when everything is ready.
+**Link Migrator** gives Craft teams a staged CLI workflow from [Verbb Hyper](https://plugins.craftcms.com/hyper) or [Typed Link Field](https://plugins.craftcms.com/typedlinkfield) to Craft's native Link field. Audit, prepare parallel native fields, migrate content with backups, review template impact, and finalize the layout cutover when everything is ready.
 
 The original Hyper fields and values remain intact throughout the migration. CLI write commands require `--force=1`, and each migration stage produces reports you can inspect before continuing.
 
@@ -39,7 +39,7 @@ Link Migrator is an independent product and is not affiliated with Verbb. Hyper 
 
 - PHP 8.2+
 - Craft CMS 5.3+
-- Verbb Hyper installed until preparation, content migration, and finalization are complete
+- Each source plugin installed and enabled until preparation, content migration, and finalization are complete
 - Craft CMS 5.6+ recommended for the full native Link advanced-field set
 
 ## Installation
@@ -133,18 +133,20 @@ php craft project-config/apply
 
 | Stage | What it does | Writes data? |
 | --- | --- | :---: |
-| `audit` | Discovers Hyper fields, mapping support, code references, and likely API mismatches. | No |
+| `audit` | Discovers Hyper and Typed Link Field sources, mapping support, code references, and likely API mismatches. | No |
 | `prepare-fields` | Creates native Link fields, places them beside their source fields in layouts, and records the mappings. | Yes |
 | `adopt-prepared` | Records mappings for native Link fields that arrived through deployed project config, without creating fields. | Plugin state only |
 | `content` | Copies supported values into prepared native fields and verifies saved values. | Yes |
 | `status` | Shows each field's phase, target handle, and migration counters. | No |
-| `finalize` | Reconciles live content, then removes source Hyper fields from layouts when every value is ready. | Yes |
+| `finalize` | Reconciles live content, then removes source fields from layouts when every value is ready. | Yes |
 
 `prepare-fields`, `adopt-prepared`, `content`, and `finalize` refuse CLI writes unless `--force=1` is present. If template mismatches are found, finalization also requires `--acknowledge-mismatches=1` after you have reviewed and accepted the template impact. Dry runs do not write field mappings, migration state, project config, or content.
 
-Finalization does not delete Hyper fields. It removes them from field layouts and leaves the prepared native Link fields in place.
+Finalization does not delete source fields. It removes them from field layouts and leaves the prepared native Link fields in place.
 
 ## Supported Mappings
+
+Typed Link Field support applies when its plugin is installed and enabled: `url`, `email`, `tel`, `entry`, `asset`, and `category` migrate to their matching native Link types. Typed `custom` values migrate as native URLs only when the custom type is enabled and the prepared native URL configuration accepts the normalized value. Root-relative URLs, anchors, and custom schemes are enabled only when Typed Link has custom validation disabled and the installed Craft version supports the matching setting; stale disabled custom settings never broaden native input. Missing query prefixes normalize to `?`, while an unrepresentable suffix is stripped without discarding the link. Custom/default text, target, automatic `noopener noreferrer`, title, ARIA label, query suffixes, and valid element-source restrictions are retained where the prepared target supports them. Typed Link's custom-text required/max-length constraints have no native equivalent and are reported as lossy. Stripped attributes produce per-element warnings and optional backups, and block readiness. Unknown enabled types, explicit-empty element sources, and entirely stale element-source restrictions refuse prepare rather than broadening access. `site`, `user`, Commerce/event, and other registered Typed Link types are skipped with their complete hydrated source payload retained in an optional backup.
 
 | Hyper type | Native Link type | Support |
 | --- | --- | --- |
@@ -170,7 +172,7 @@ Unsupported values are skipped and reported. Custom link data is included in opt
 
 ## Template Impact
 
-Hyper and native Link values do not expose the same Twig and PHP APIs. Run the scanner before finalizing:
+Source and native Link values do not expose the same Twig and PHP APIs. Run the scanner before finalizing:
 
 ```bash
 php craft link-migrator/migrate/mismatches
@@ -219,13 +221,13 @@ This reports migrated, skipped, warning, error, and backup counts. It does not r
 
 - Back up the database and project config before every non-dry run.
 - Review audit warnings, unsupported fields, and mismatch results before continuing.
-- Keep Hyper installed until reports are clean, templates are updated, and finalization has succeeded.
+- Keep Hyper or Typed Link Field installed and enabled until reports are clean, templates are updated, and finalization has succeeded.
 - Run content migration in each environment because Craft content is environment-specific.
 - Verify the site and templates before removing Hyper from the project.
 
 ## Support
 
-- **Bug reports:** [GitHub Issues](https://github.com/LuremoDigital/Link-migration/issues). Include Craft, PHP, and Hyper versions plus the relevant JSON report.
+- **Bug reports:** [GitHub Issues](https://github.com/LuremoDigital/Link-migration/issues). Include Craft, PHP, source-plugin versions, and the relevant JSON report.
 - **Changelog:** [CHANGELOG.md](CHANGELOG.md)
 - **Template migration guide:** [docs/TEMPLATE-IMPACT.md](docs/TEMPLATE-IMPACT.md)
 - **Plugin Store description:** [docs/plugin-store-description.md](docs/plugin-store-description.md)
