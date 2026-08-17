@@ -88,11 +88,11 @@ class MigrateController extends Controller
 
         if ($audit->fields === []) {
             if ($this->field !== null) {
-                $this->stderr("No Hyper field found with handle `{$this->field}`.\n", Console::FG_RED);
+                $this->stderr("No migratable source field found with handle `{$this->field}`.\n", Console::FG_RED);
                 return ExitCode::UNSPECIFIED_ERROR;
             }
 
-            $this->stdout("No Hyper fields found; nothing to adopt.\n", Console::FG_YELLOW);
+            $this->stdout("No migratable source fields found; nothing to adopt.\n", Console::FG_YELLOW);
             return ExitCode::OK;
         }
 
@@ -199,7 +199,7 @@ class MigrateController extends Controller
     public function actionRollbackInfo(): int
     {
         $records = LinkMigrator::$plugin->getState()->summaries($this->field);
-        $this->stdout("Rollback information is informational only. Hyper is intentionally left installed.\n\n", Console::FG_YELLOW);
+        $this->stdout("Rollback information is informational only. Source plugins are intentionally left installed.\n\n", Console::FG_YELLOW);
 
         foreach ($records as $record) {
             $this->stdout(sprintf(

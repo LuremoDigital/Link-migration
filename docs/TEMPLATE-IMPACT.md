@@ -1,6 +1,6 @@
 # Template Impact Guide
 
-Hyper fields and native Craft Link fields are not API-identical.
+Hyper/Typed Link Field values and native Craft Link fields are not API-identical.
 
 ## Common Hyper patterns to review
 
@@ -54,6 +54,8 @@ Review anything that depends on:
 - custom fields attached to a Hyper link type
 - embed HTML or provider data
 - loops over multi-link Hyper fields
+- Typed Link Field `customText`, `linkedUrl`, `getLinkAttributes()`, `getLink()`, `hasElement()`, or `getElement()` APIs
+- current or escaped `lenz\\linkfield` class names and legacy `typedlinkfield` plugin references
 
 ## Potential runtime and template errors
 
@@ -123,7 +125,7 @@ Hyper supports:
 - custom per-link field layouts
 - embed helpers like `getHtml()` and `getData()`
 
-Craft's native Link field supports URL, asset, category, email, entry, phone, and SMS links. It does not expose Hyper's embed/site/user/custom-type APIs. Code that still expects those methods or custom fields can error after migration.
+Craft's native Link field supports URL, asset, category, email, entry, phone, and SMS links. It does not expose Hyper's or Typed Link Field's embed/site/user/custom-type APIs. Typed Link `customText` becomes native `.label`; `getElement()` and `hasElement()` become `.element` checks. Code that still expects source-only methods or custom fields can error after migration.
 
 ### 5. GraphQL consumers may break even if Twig is fixed
 

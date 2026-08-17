@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace luremo\linkmigrator\tests;
 
+use craft\base\ElementInterface;
 use luremo\linkmigrator\models\AuditResult;
 use luremo\linkmigrator\models\FieldAudit;
 use luremo\linkmigrator\models\FieldMapping;
@@ -13,6 +14,41 @@ use PHPUnit\Framework\TestCase;
 
 final class StateServiceTest extends TestCase
 {
+    public function testWarningRecordKeepsBackupPath(): void
+    {
+        $service = new class extends StateService {
+            public array $saved = [];
+
+            protected function saveRecord(
+                string $action,
+                string $fieldHandle,
+                string $sourceFieldUid,
+                ElementInterface $element,
+                string $status,
+                array $warnings,
+                array $backup,
+                ?string $backupPath
+            ): void {
+                $this->saved = compact('status', 'backupPath');
+            }
+        };
+
+        $service->markWarning(
+            'content',
+            'ctaLink',
+            'source-uid',
+            $this->createMock(ElementInterface::class),
+            ['Unsupported value'],
+            ['source' => 'value'],
+            '/tmp/link-migrator-backup.json',
+        );
+
+        self::assertSame([
+            'status' => 'warning',
+            'backupPath' => '/tmp/link-migrator-backup.json',
+        ], $service->saved);
+    }
+
     public function testWorkflowStatusesDefaultRowlessAuditFieldsToAudited(): void
     {
         $service = $this->stateService();
