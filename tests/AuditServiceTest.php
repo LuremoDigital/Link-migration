@@ -135,8 +135,8 @@ TWIG,
        on multiple lines #}
 ) }}
 {{ entry.cta.getElement(
-    /* no arguments
-       on multiple lines */
+    {# no arguments
+       on multiple lines #}
 ) }}
 {{ entry.cta.getUrl(
 ) ?? entry.cta.getUrl({ scheme: 'https' }) }}
@@ -283,6 +283,8 @@ PHP,
 %}
 {% set nested = link %}
 {{ nested.getTitle() }}
+{% set compact = entry.cta %}{{ compact
+    .getDefaultText() }}
 TWIG,
             'src/Template.php' => <<<'PHP'
 <?php
@@ -291,10 +293,18 @@ $link =
 $nested = $link;
 $nested
     ->getCustomText();
+$compact = $entry->cta; $compact
+    ->getIntrinsicText();
 PHP,
         ]), 'pattern');
 
-        self::assertSame(['getText(', 'getTitle(', 'getCustomText('], $patterns);
+        self::assertSame([
+            'getText(',
+            'getTitle(',
+            'getDefaultText(',
+            'getCustomText(',
+            'getIntrinsicText(',
+        ], $patterns);
     }
 
     public function testMismatchScannerStopsFollowingReassignedAliases(): void
@@ -347,6 +357,25 @@ PHP,
         ], $patterns);
     }
 
+    public function testMismatchScannerAppliesSameLineAssignmentsInOrder(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{% set link = entry.cta %}{% set link = page %}{{ link.getText() }}
+{{ link.getTitle() }}{% set link = entry.cta %}
+{% set link = entry.cta %}{{ link.getCustomText() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link = $entry->cta; $link = $page; $link->getDefaultText();
+$link->getIntrinsicText(); $link = $entry->cta;
+$link = $entry->cta; $link->getIntrinsicUrl();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame(['getCustomText(', 'getIntrinsicUrl('], $patterns);
+    }
+
     public function testMismatchScannerIgnoresCommentsButScansExecutableSuffixes(): void
     {
         $patterns = array_column($this->scan([
@@ -357,6 +386,9 @@ PHP,
 {# note #}{{ entry.cta.getCustomText() }}
 # {{ entry.cta.getDefaultText() }}
 // {{ entry.cta.getIntrinsicText() }}
+{{ value }} {# {{ entry.cta.getTitle() }} #}
+{{ '{# literal #}' }} {{ entry.cta.getAriaLabel() }}
+{% set literal = '# not a comment' %}{{ entry.cta.getAllowTarget() }}
 TWIG,
             'src/Template.php' => <<<'PHP'
 <?php
@@ -366,6 +398,9 @@ $entry->cta->getTitle();
 /* note */ $entry->cta->getIntrinsicText();
 // $entry->cta->getCustomText();
 # $entry->cta->getDefaultText();
+$value = 1; // $entry->cta->getText();
+$literal = '/* not a comment */'; $entry->cta->getAriaLabel();
+$literal = '// not a comment'; $entry->cta->getAllowTarget();
 PHP,
         ]), 'pattern');
 
@@ -373,8 +408,12 @@ PHP,
             'getCustomText(',
             'getDefaultText(',
             'getIntrinsicText(',
+            'getAriaLabel(',
+            'getAllowTarget(',
             'getDefaultText(',
             'getIntrinsicText(',
+            'getAriaLabel(',
+            'getAllowTarget(',
         ], $patterns);
     }
 

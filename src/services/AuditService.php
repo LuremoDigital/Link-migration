@@ -777,12 +777,9 @@ class AuditService extends Component
                 $tail = substr($line, $position + strlen($pattern));
                 $nextLine = $lineNumber + 1;
                 while (true) {
-                    $stripped = preg_replace('/^\s*(?:(?:\{#.*?#\}|\/\*.*?\*\/|\/\/[^\r\n]*|#[^\r\n]*)\s*)+/s', '', $tail) ?? $tail;
-                    $trimmed = ltrim($stripped);
-                    $unfinishedComment = (str_starts_with($trimmed, '{#') && !str_contains($trimmed, '#}'))
-                        || (str_starts_with($trimmed, '/*') && !str_contains($trimmed, '*/'));
-                    if (($trimmed !== '' && !$unfinishedComment) || !isset($lines[$nextLine])) {
-                        $tail = $stripped;
+                    $trimmed = ltrim($tail);
+                    if ($trimmed !== '' || !isset($lines[$nextLine])) {
+                        $tail = $trimmed;
                         break;
                     }
                     $tail .= $lines[$nextLine++];
@@ -800,23 +797,29 @@ class AuditService extends Component
         return true;
     }
 
-    private function sourcePatternPositions(string $context, string $line, string $pattern, array $sourceReferences): array
+    private function sourcePatternPositions(string $context, string $line, string $pattern, array $sourceReferenceState): array
     {
         $positions = [];
         $lineOffset = strlen($context) - strlen($line);
         $member = ltrim($pattern, '.');
-        foreach ($sourceReferences as $reference) {
-            if (!is_string($reference) || $reference === '') {
-                continue;
-            }
+        $states = [['offset' => 0, 'references' => $sourceReferenceState['initial']]];
+        array_push($states, ...$sourceReferenceState['events']);
+        foreach ($states as $stateIndex => $state) {
+            $stateEnd = $states[$stateIndex + 1]['offset'] ?? strlen($line);
+            foreach ($state['references'] as $reference) {
+                if (!is_string($reference) || $reference === '') {
+                    continue;
+                }
 
-            $receiver = (str_starts_with($reference, '$') ? '(?<![A-Za-z0-9_])' : '(?<![A-Za-z0-9_$])')
-                . preg_quote($reference, '/') . '(?![A-Za-z0-9_])';
-            $regex = '/' . $receiver . '(?:[\'\"]\s*[\]\)]\s*)?\s*(?:\?\.|\.|\?->|->)\s*\K' . preg_quote($member, '/') . '/s';
-            preg_match_all($regex, $context, $matches, PREG_OFFSET_CAPTURE);
-            foreach ($matches[0] as [, $offset]) {
-                if ($offset >= $lineOffset) {
-                    $positions[] = $offset - $lineOffset;
+                $receiver = (str_starts_with($reference, '$') ? '(?<![A-Za-z0-9_])' : '(?<![A-Za-z0-9_$])')
+                    . preg_quote($reference, '/') . '(?![A-Za-z0-9_])';
+                $regex = '/' . $receiver . '(?:[\'\"]\s*[\]\)]\s*)?\s*(?:\?\.|\.|\?->|->)\s*\K' . preg_quote($member, '/') . '/s';
+                preg_match_all($regex, $context, $matches, PREG_OFFSET_CAPTURE);
+                foreach ($matches[0] as [, $offset]) {
+                    $linePosition = $offset - $lineOffset;
+                    if ($linePosition >= $state['offset'] && $linePosition < $stateEnd) {
+                        $positions[] = $linePosition;
+                    }
                 }
             }
         }
@@ -827,31 +830,46 @@ class AuditService extends Component
     private function sourceReferencesByLine(array $lines, array $sourceFieldHandles): array
     {
         $contents = implode('', $lines);
-        $assignmentsByLine = [];
+        $assignments = [];
         foreach (['/\bset\s+([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=|>)\s*(.*?)(?:%}|$)/s', '/(\$[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=|>)\s*(.*?);/s'] as $pattern) {
             preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
             foreach ($matches as $match) {
                 $endOffset = $match[0][1] + strlen($match[0][0]);
                 $assignmentLine = substr_count(substr($contents, 0, $endOffset), "\n");
-                $assignmentsByLine[$assignmentLine][] = [$match[1][0], $match[2][0]];
+                $lineStart = strrpos(substr($contents, 0, $endOffset), "\n");
+                $assignments[] = [
+                    'endOffset' => $endOffset,
+                    'line' => $assignmentLine,
+                    'lineOffset' => $endOffset - ($lineStart === false ? 0 : $lineStart + 1),
+                    'alias' => $match[1][0],
+                    'expression' => $match[2][0],
+                ];
             }
         }
+        usort($assignments, static fn(array $a, array $b): int => $a['endOffset'] <=> $b['endOffset']);
 
         $references = $sourceFieldHandles;
         $referencesByLine = [];
+        $assignmentIndex = 0;
         foreach (array_keys($lines) as $lineNumber) {
-            $lineReferences = $references;
-            foreach ($assignmentsByLine[$lineNumber] ?? [] as [$alias, $expression]) {
-                $sourceExpression = $this->lineContainsSourceReference($expression, $references);
+            $lineState = ['initial' => $references, 'events' => []];
+            while (($assignment = $assignments[$assignmentIndex] ?? null) && $assignment['line'] === $lineNumber) {
+                $alias = $assignment['alias'];
+                $sourceExpression = $this->lineContainsSourceReference($assignment['expression'], $references);
                 if (!in_array($alias, $sourceFieldHandles, true)) {
                     $references = array_values(array_diff($references, [$alias]));
                 }
                 if ($sourceExpression) {
                     $references[] = $alias;
                 }
-                $lineReferences = array_values(array_unique([...$lineReferences, ...$references]));
+                $references = array_values(array_unique($references));
+                $lineState['events'][] = [
+                    'offset' => $assignment['lineOffset'],
+                    'references' => $references,
+                ];
+                $assignmentIndex++;
             }
-            $referencesByLine[$lineNumber] = $lineReferences;
+            $referencesByLine[$lineNumber] = $lineState;
         }
 
         return $referencesByLine;
@@ -862,7 +880,17 @@ class AuditService extends Component
         $context = $lines[$lineNumber];
         for ($index = $lineNumber - 1, $minimum = max(0, $lineNumber - 20); $index >= $minimum; $index--) {
             $previous = $lines[$index];
-            if (str_contains($previous, ';') || str_contains($previous, '}}') || str_contains($previous, '%}')) {
+            $boundary = false;
+            $boundaryLength = 0;
+            foreach ([';' => 1, '}}' => 2, '%}' => 2] as $delimiter => $length) {
+                $position = strrpos($previous, $delimiter);
+                if ($position !== false && ($boundary === false || $position > $boundary)) {
+                    $boundary = $position;
+                    $boundaryLength = $length;
+                }
+            }
+            if ($boundary !== false) {
+                $context = substr($previous, $boundary + $boundaryLength) . $context;
                 break;
             }
 
@@ -877,46 +905,78 @@ class AuditService extends Component
 
     private function withoutCommentLines(array $lines, bool $php): array
     {
-        $blockEnd = null;
-        foreach ($lines as &$line) {
-            while (true) {
-                if ($blockEnd !== null) {
-                    $end = strpos($line, $blockEnd);
-                    if ($end === false) {
-                        $line = "\n";
-                        break;
-                    }
-                    $line = substr($line, $end + strlen($blockEnd));
-                    $blockEnd = null;
-                    continue;
-                }
+        $contents = implode('', $lines);
+        if ($php) {
+            $masked = '';
+            foreach (token_get_all($contents) as $token) {
+                $masked .= is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)
+                    ? $this->maskComment($token[1])
+                    : (is_array($token) ? $token[1] : $token);
+            }
+        } else {
+            $masked = $this->withoutTwigComments($contents);
+        }
 
-                $trimmed = ltrim($line);
-                foreach ($php ? ['/*' => '*/'] : ['{#' => '#}'] as $start => $endMarker) {
-                    if (!str_starts_with($trimmed, $start)) {
-                        continue;
-                    }
+        return preg_split('/(?<=\n)/', $masked, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    }
 
-                    $startOffset = strlen($line) - strlen($trimmed);
-                    $end = strpos($line, $endMarker, $startOffset + strlen($start));
-                    if ($end === false) {
-                        $blockEnd = $endMarker;
-                        $line = "\n";
-                        continue 3;
-                    }
-                    $line = substr($line, 0, $startOffset) . substr($line, $end + strlen($endMarker));
-                    continue 2;
+    private function withoutTwigComments(string $contents): string
+    {
+        $masked = $contents;
+        $length = strlen($contents);
+        $state = 'data';
+        $quote = null;
+        for ($index = 0; $index < $length; $index++) {
+            if ($state === 'data') {
+                if (substr($contents, $index, 2) === '{#') {
+                    $end = strpos($contents, '#}', $index + 2);
+                    $end = $end === false ? $length : $end + 2;
+                    $comment = substr($contents, $index, $end - $index);
+                    $masked = substr_replace($masked, $this->maskComment($comment), $index, strlen($comment));
+                    $index = $end - 1;
+                } elseif (in_array(substr($contents, $index, 2), ['{{', '{%'], true)) {
+                    $state = $contents[$index + 1] === '{' ? 'variable' : 'block';
+                    $index++;
                 }
+                continue;
+            }
 
-                if ($php && (str_starts_with($trimmed, '//') || str_starts_with($trimmed, '#'))) {
-                    $line = "\n";
+            $character = $contents[$index];
+            if ($quote !== null) {
+                if ($character === '\\') {
+                    $index++;
+                } elseif ($character === $quote) {
+                    $quote = null;
                 }
-                break;
+                continue;
+            }
+            if (substr($contents, $index, 2) === '{#') {
+                $end = strpos($contents, '#}', $index + 2);
+                $end = $end === false ? $length : $end + 2;
+                $comment = substr($contents, $index, $end - $index);
+                $masked = substr_replace($masked, $this->maskComment($comment), $index, strlen($comment));
+                $index = $end - 1;
+            } elseif ($character === '\'' || $character === '"') {
+                $quote = $character;
+            } elseif ($character === '#') {
+                $end = strpos($contents, "\n", $index);
+                $end = $end === false ? $length : $end;
+                $comment = substr($contents, $index, $end - $index);
+                $masked = substr_replace($masked, $this->maskComment($comment), $index, strlen($comment));
+                $index = $end - 1;
+            } elseif (($state === 'variable' && substr($contents, $index, 2) === '}}')
+                || ($state === 'block' && substr($contents, $index, 2) === '%}')) {
+                $state = 'data';
+                $index++;
             }
         }
-        unset($line);
 
-        return $lines;
+        return $masked;
+    }
+
+    private function maskComment(string $comment): string
+    {
+        return preg_replace('/[^\r\n]/', ' ', $comment) ?? $comment;
     }
 
     private function lineContainsSourceReference(string $line, array $sourceReferences): bool
