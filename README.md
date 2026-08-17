@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./src/icon.svg" width="120" alt="Link Migrator icon">
+  <img src="https://pluginicons.craft-cdn.com/link-migratorzuwfzbrttedlcmkdcazsbclpilqiqkbhpuht.svg?1784221213" width="120" alt="Link Migrator icon">
 </p>
 
 <h1 align="center">Link Migrator</h1>
