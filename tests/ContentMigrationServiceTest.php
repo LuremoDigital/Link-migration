@@ -16,11 +16,11 @@ final class ContentMigrationServiceTest extends TestCase
 
         self::assertSame(['type' => 'email', 'value' => 'hello@example.test'], $method->invoke($service, [
             'type' => 'email',
-            'value' => 'mailto:hello@example.test',
+            'value' => ' mailto:hello@example.test ',
         ]));
         self::assertSame(['type' => 'tel', 'value' => '+31 20 123 4567'], $method->invoke($service, [
             'type' => 'tel',
-            'value' => 'tel:+31 20 123 4567',
+            'value' => ' tel:+31 20 123 4567 ',
         ]));
         self::assertSame(['type' => 'entry', 'value' => 15], $method->invoke($service, [
             'type' => 'entry',

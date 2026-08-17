@@ -391,9 +391,9 @@ class ContentMigrationService extends Component
             }
             $value = is_numeric($value) ? (int)$value : $value;
         } elseif ($type === 'email' && is_string($value)) {
-            $value = preg_replace('/^mailto:/i', '', $value);
+            $value = trim((string)preg_replace('/^mailto:/i', '', trim($value)));
         } elseif ($type === 'tel' && is_string($value)) {
-            $value = preg_replace('/^tel:/i', '', $value);
+            $value = trim((string)preg_replace('/^tel:/i', '', trim($value)));
         } elseif (is_scalar($value)) {
             $value = trim((string)$value);
         }

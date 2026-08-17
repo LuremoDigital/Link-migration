@@ -21,6 +21,15 @@ final class ModelStateTest extends TestCase
         $mapping->phase = FieldMapping::PHASE_PREPARED;
         self::assertTrue($mapping->isPrepared());
 
+        foreach ([
+            FieldMapping::PHASE_CONTENT_MIGRATED,
+            FieldMapping::PHASE_READY_TO_FINALIZE,
+            FieldMapping::PHASE_FINALIZED,
+        ] as $phase) {
+            $mapping->phase = $phase;
+            self::assertTrue($mapping->isPrepared());
+        }
+
     }
 
     public function testAuditResultOnlyBlocksUnsupportedMappings(): void
