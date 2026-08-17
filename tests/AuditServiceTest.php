@@ -106,6 +106,9 @@ $page->getTitle();
 $page->getUrl();
 $collection->isEmpty();
 PHP,
+            'templates/same-line.twig' => <<<'TWIG'
+{{ entry.cta.label }} {{ page.getText() }}
+TWIG,
         ]));
     }
 
@@ -128,9 +131,12 @@ TWIG,
         $matches = $this->scan([
             'templates/typed-link.twig' => <<<'TWIG'
 {{ entry.cta.getLink(
-    {# no arguments #}
+    {# no arguments
+       on multiple lines #}
 ) }}
 {{ entry.cta.getElement(
+    /* no arguments
+       on multiple lines */
 ) }}
 {{ entry.cta.getUrl(
 ) ?? entry.cta.getUrl({ scheme: 'https' }) }}

@@ -752,18 +752,33 @@ class AuditService extends Component
             return false;
         }
 
-        if (!empty($mismatch['sourceScoped']) && !$this->lineContainsSourceReference($this->sourceContext($lines, $lineNumber), $sourceReferences)) {
-            return false;
+        $positions = [];
+        if (!empty($mismatch['sourceScoped'])) {
+            $positions = $this->sourcePatternPositions($this->sourceContext($lines, $lineNumber), $line, $pattern, $sourceReferences);
+            if ($positions === []) {
+                return false;
+            }
         }
 
         if (!empty($mismatch['argumentsOnly'])) {
-            $offset = 0;
-            while (($position = strpos($line, $pattern, $offset)) !== false) {
+            if ($positions === []) {
+                $offset = 0;
+                while (($position = strpos($line, $pattern, $offset)) !== false) {
+                    $positions[] = $position;
+                    $offset = $position + strlen($pattern);
+                }
+            }
+
+            foreach ($positions as $position) {
                 $tail = substr($line, $position + strlen($pattern));
                 $nextLine = $lineNumber + 1;
                 while (true) {
-                    $tail = preg_replace('/^\s*(?:(?:\{#.*?#\}|\/\*.*?\*\/|\/\/[^\r\n]*|#[^\r\n]*)\s*)+/s', '', $tail) ?? $tail;
-                    if (trim($tail) !== '' || !isset($lines[$nextLine])) {
+                    $stripped = preg_replace('/^\s*(?:(?:\{#.*?#\}|\/\*.*?\*\/|\/\/[^\r\n]*|#[^\r\n]*)\s*)+/s', '', $tail) ?? $tail;
+                    $trimmed = ltrim($stripped);
+                    $unfinishedComment = (str_starts_with($trimmed, '{#') && !str_contains($trimmed, '#}'))
+                        || (str_starts_with($trimmed, '/*') && !str_contains($trimmed, '*/'));
+                    if (($trimmed !== '' && !$unfinishedComment) || !isset($lines[$nextLine])) {
+                        $tail = $stripped;
                         break;
                     }
                     $tail .= $lines[$nextLine++];
@@ -773,13 +788,35 @@ class AuditService extends Component
                     return true;
                 }
 
-                $offset = $position + strlen($pattern);
             }
 
             return false;
         }
 
         return true;
+    }
+
+    private function sourcePatternPositions(string $context, string $line, string $pattern, array $sourceReferences): array
+    {
+        $positions = [];
+        $lineOffset = strlen($context) - strlen($line);
+        $member = ltrim($pattern, '.');
+        foreach ($sourceReferences as $reference) {
+            if (!is_string($reference) || $reference === '') {
+                continue;
+            }
+
+            $receiver = '(?<![A-Za-z0-9_])' . preg_quote($reference, '/') . '(?![A-Za-z0-9_])';
+            $regex = '/' . $receiver . '(?:[\'\"]\s*[\]\)]\s*)?\s*(?:\.|\?->|->)\s*\K' . preg_quote($member, '/') . '/s';
+            preg_match_all($regex, $context, $matches, PREG_OFFSET_CAPTURE);
+            foreach ($matches[0] as [, $offset]) {
+                if ($offset >= $lineOffset) {
+                    $positions[] = $offset - $lineOffset;
+                }
+            }
+        }
+
+        return array_values(array_unique($positions));
     }
 
     private function sourceReferences(array $lines, array $sourceFieldHandles): array
