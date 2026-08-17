@@ -233,7 +233,7 @@ class MigrateController extends Controller
 
         $plugin->getReport()->writePayload($report, $payload);
 
-        $this->stdout(sprintf("Potential Hyper API mismatches: %d\n", count($audit->mismatchReferences)), Console::FG_YELLOW);
+        $this->stdout(sprintf("Potential source Link API mismatches: %d\n", count($audit->mismatchReferences)), Console::FG_YELLOW);
 
         foreach ($audit->mismatchReferences as $mismatch) {
             $this->stdout(sprintf(

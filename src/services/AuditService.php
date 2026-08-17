@@ -18,58 +18,238 @@ class AuditService extends Component
     private const MISMATCH_PATTERNS = [
         [
             'pattern' => '.text',
-            'replacement' => '.label',
-            'reason' => 'Hyper commonly exposes link text via `.text`; Craft LinkData uses `.label`.',
+            'replacement' => '.label plus source-specific fallback/precedence review',
+            'reason' => 'Source link text can include fallback behavior that LinkData `.label` does not reproduce.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => '.linkText',
             'replacement' => '.label',
             'reason' => 'Hyper `linkText` should usually become Craft LinkData `.label`.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'linkValue',
             'replacement' => 'value or url',
             'reason' => 'Hyper `linkValue` maps to `value` for the raw stored value or `url` for rendered href output.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'customText',
             'replacement' => 'label',
             'reason' => 'Typed Link `customText` maps to Craft LinkData `label`.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'linkedUrl',
             'replacement' => 'url',
             'reason' => 'Typed Link `linkedUrl` maps to Craft LinkData `url`.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'getLinkAttributes(',
-            'replacement' => 'manual LinkData attribute mapping',
-            'reason' => 'Typed Link `getLinkAttributes()` is not portable to every supported Craft LinkData version.',
+            'replacement' => '.attributes (Craft 5.9+) or manual mapping; merge passed overrides explicitly',
+            'reason' => 'Typed Link renders an attribute string and accepts overrides; LinkData exposes only an attribute array on newer Craft versions.',
+            'aliases' => ['.linkAttributes'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getRawLinkAttributes(',
+            'replacement' => '.attributes (Craft 5.9+) or manual mapping; merge passed overrides explicitly',
+            'reason' => 'Typed Link accepts attribute overrides; LinkData exposes only its base attributes on newer Craft versions.',
+            'aliases' => ['.rawLinkAttributes'],
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'getLink(',
-            'replacement' => 'link.url plus manual <a> rendering',
-            'reason' => 'Hyper `getLink()` returns rendered markup; Craft LinkData should be rendered explicitly in Twig.',
+            'replacement' => '.link; rewrite calls that pass text or attributes',
+            'reason' => 'Craft LinkData can render a link, but it does not accept Typed Link or Hyper text/attribute arguments.',
+            'argumentsOnly' => true,
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'getHtml(',
             'replacement' => 'manual rendering',
             'reason' => 'Hyper embed/html helpers do not exist on Craft LinkData.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'getData(',
             'replacement' => 'manual mapping or backup-only data',
             'reason' => 'Hyper embed/provider payload helpers do not exist on Craft LinkData.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'getElement(',
-            'replacement' => '.element',
-            'reason' => 'Craft LinkData exposes relational targets through `.element` instead of `getElement()`.',
+            'replacement' => '.element; remove Typed Link ignoreStatus arguments',
+            'reason' => 'Craft LinkData exposes `.element` and `getElement()`, but not Typed Link’s ignore-status argument.',
+            'argumentsOnly' => true,
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'hasElement(',
             'replacement' => 'if link.element',
             'reason' => 'Craft LinkData does not provide `hasElement()`; check `.element` directly.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getAllowCustomText(',
+            'replacement' => 'remove the runtime setting check and use .label',
+            'reason' => 'Craft LinkData does not expose the source field’s allow-custom-text setting.',
+            'aliases' => ['.allowCustomText'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getAllowTarget(',
+            'replacement' => 'remove the runtime setting check and use .target',
+            'reason' => 'Craft LinkData does not expose the source field’s allow-target setting.',
+            'aliases' => ['.allowTarget'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getAriaLabel(',
+            'replacement' => '.ariaLabel',
+            'reason' => 'Typed Link’s aria-label getter becomes the native LinkData property.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getCustomText(',
+            'replacement' => 'explicit custom/default/fallback logic; .label is not equivalent',
+            'reason' => 'Typed Link custom-text fallback order is not preserved by the native LinkData label.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getDefaultText(',
+            'replacement' => 'preserve the field default explicitly; .label may be custom or intrinsic',
+            'reason' => 'Typed Link exposes the field default independently, while LinkData resolves one effective label.',
+            'aliases' => ['.defaultText'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getEnableAriaLabel(',
+            'replacement' => 'remove the runtime setting check and use .ariaLabel',
+            'reason' => 'Craft LinkData does not expose the source field’s enable-aria-label setting.',
+            'aliases' => ['.enableAriaLabel'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getEnableTitle(',
+            'replacement' => 'remove the runtime setting check and use .title',
+            'reason' => 'Craft LinkData does not expose the source field’s enable-title setting.',
+            'aliases' => ['.enableTitle'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getIntrinsicText(',
+            'replacement' => 'type-specific intrinsic label, such as .element.title',
+            'reason' => 'LinkData `.label` can contain a migrated custom/default label, so it is not always intrinsic text.',
+            'aliases' => ['.intrinsicText'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getIntrinsicUrl(',
+            'replacement' => '.url',
+            'reason' => 'Craft LinkData exposes the resolved URL through `.url`.',
+            'aliases' => ['.intrinsicUrl'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getLinkType(',
+            'replacement' => '.type',
+            'reason' => 'Craft LinkData exposes a short type handle rather than Typed Link’s link-type model.',
+            'aliases' => ['.linkType'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getOwnerSite(',
+            'replacement' => 'use the owner element site',
+            'reason' => 'Craft LinkData does not expose Typed Link’s owner-site helper.',
+            'aliases' => ['.ownerSite'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getTarget(',
+            'replacement' => '.target',
+            'reason' => 'Typed Link’s target getter becomes the native LinkData property.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getText(',
+            'replacement' => '.label plus explicit fallback/precedence handling',
+            'reason' => 'Typed Link checks custom, intrinsic, default, then fallback text; LinkData exposes one effective label.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getTitle(',
+            'replacement' => '.title',
+            'reason' => 'Typed Link’s title getter becomes the native LinkData property.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getUrl(',
+            'replacement' => '.url; rewrite Typed Link URL option arrays explicitly',
+            'reason' => 'A no-argument URL read remains portable, but Craft LinkData does not accept Typed Link’s URL modification options.',
+            'argumentsOnly' => true,
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getSiteId(',
+            'replacement' => 'use owner-site .element.siteId; the cross-site target site is not preserved',
+            'reason' => 'Craft native Link cannot preserve a linkedSiteId that differs from the owner site.',
+            'aliases' => ['.siteId'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'isCrossSiteLink(',
+            'replacement' => 'compare link.element.siteId with the owner site',
+            'reason' => 'Craft native Link cannot preserve the separate target site used by Typed Link’s cross-site helper.',
+            'aliases' => ['.crossSiteLink'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'isEmpty(',
+            'replacement' => 'if not link.url',
+            'reason' => 'Craft LinkData does not expose Typed Link’s `isEmpty()` helper.',
+            'aliases' => ['.empty'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'isEditorEmpty(',
+            'replacement' => 'validate the native value directly',
+            'reason' => 'Craft LinkData does not expose Typed Link’s editor-empty helper.',
+            'aliases' => ['.editorEmpty'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'getSite(',
+            'replacement' => 'resolve the site explicitly',
+            'reason' => 'Craft LinkData does not expose Typed Link’s site-link helper.',
+            'aliases' => ['.site'],
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'customQuery',
+            'replacement' => 'urlSuffix',
+            'reason' => 'Typed Link custom queries migrate to the native LinkData URL suffix.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'linkedId',
+            'replacement' => 'element.id or value',
+            'reason' => 'Typed Link linked IDs are represented by the native LinkData element or raw value.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'linkedSiteId',
+            'replacement' => 'owner-site element.siteId; the cross-site target site is not preserved',
+            'reason' => 'Craft native Link cannot preserve a linkedSiteId that differs from the owner site.',
+            'sourceScoped' => true,
+        ],
+        [
+            'pattern' => 'linkedTitle',
+            'replacement' => 'label or element.title',
+            'reason' => 'Typed Link cached titles are represented by the native label or resolved element.',
+            'sourceScoped' => true,
         ],
         [
             'pattern' => 'verbb\\hyper\\links\\',
@@ -173,7 +353,7 @@ class AuditService extends Component
         $result->fields = array_values($fieldsByHandle);
 
         $result->codeReferences = $this->findCodeReferences();
-        $result->mismatchReferences = $this->findMismatchReferences();
+        $result->mismatchReferences = $this->findMismatchReferences(array_keys($fieldsByHandle));
         $result->notes = [
             'Source plugins must remain installed and enabled during content migration so existing field values can still be hydrated.',
             'Content migration should be rerun in each environment because content is environment-specific.',
@@ -508,7 +688,7 @@ class AuditService extends Component
         return $references;
     }
 
-    public function findMismatchReferences(): array
+    public function findMismatchReferences(array $sourceFieldHandles = []): array
     {
         $roots = [
             Craft::getAlias('@root/templates'),
@@ -534,26 +714,280 @@ class AuditService extends Component
                 if ($contents === false) {
                     continue;
                 }
+                $scanContents = $this->withoutCommentLines(
+                    $contents,
+                    strtolower($fileInfo->getExtension()) === 'php',
+                );
+                $sourceReferences = $this->sourceReferencesByLine($scanContents, $sourceFieldHandles);
 
-                foreach ($contents as $lineNumber => $line) {
+                foreach ($scanContents as $lineNumber => $line) {
                     foreach (self::MISMATCH_PATTERNS as $mismatch) {
-                        if (!str_contains($line, $mismatch['pattern'])) {
-                            continue;
-                        }
+                        foreach ([$mismatch['pattern'], ...($mismatch['aliases'] ?? [])] as $pattern) {
+                            $candidate = [...$mismatch, 'pattern' => $pattern];
+                            if (!$this->lineMatchesMismatch($scanContents, $lineNumber, $candidate, $sourceReferences[$lineNumber])) {
+                                continue;
+                            }
 
-                        $matches[] = [
-                            'file' => $fileInfo->getPathname(),
-                            'line' => $lineNumber + 1,
-                            'pattern' => $mismatch['pattern'],
-                            'replacement' => $mismatch['replacement'],
-                            'reason' => $mismatch['reason'],
-                            'snippet' => trim($line),
-                        ];
+                            $matches[] = [
+                                'file' => $fileInfo->getPathname(),
+                                'line' => $lineNumber + 1,
+                                'pattern' => $pattern,
+                                'replacement' => $mismatch['replacement'],
+                                'reason' => $mismatch['reason'],
+                                'snippet' => trim($contents[$lineNumber]),
+                            ];
+                        }
                     }
                 }
             }
         }
 
         return $matches;
+    }
+
+    private function lineMatchesMismatch(array $lines, int $lineNumber, array $mismatch, array $sourceReferences): bool
+    {
+        $line = $lines[$lineNumber];
+        $pattern = $mismatch['pattern'];
+        $containsPattern = str_starts_with($pattern, '.')
+            ? preg_match('/' . preg_quote($pattern, '/') . '(?![A-Za-z0-9_])/', $line) === 1
+            : str_contains($line, $pattern);
+        if (!$containsPattern) {
+            return false;
+        }
+
+        $positions = [];
+        if (!empty($mismatch['sourceScoped'])) {
+            $positions = $this->sourcePatternPositions($this->sourceContext($lines, $lineNumber), $line, $pattern, $sourceReferences);
+            if ($positions === []) {
+                return false;
+            }
+        }
+
+        if (!empty($mismatch['argumentsOnly'])) {
+            if ($positions === []) {
+                $offset = 0;
+                while (($position = strpos($line, $pattern, $offset)) !== false) {
+                    $positions[] = $position;
+                    $offset = $position + strlen($pattern);
+                }
+            }
+
+            foreach ($positions as $position) {
+                $tail = substr($line, $position + strlen($pattern));
+                $nextLine = $lineNumber + 1;
+                while (true) {
+                    $trimmed = ltrim($tail);
+                    if ($trimmed !== '' || !isset($lines[$nextLine])) {
+                        $tail = $trimmed;
+                        break;
+                    }
+                    $tail .= $lines[$nextLine++];
+                }
+
+                if (preg_match('/^\s*\)/', $tail) !== 1) {
+                    return true;
+                }
+
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function sourcePatternPositions(string $context, string $line, string $pattern, array $sourceReferenceState): array
+    {
+        $positions = [];
+        $lineOffset = strlen($context) - strlen($line);
+        $member = ltrim($pattern, '.');
+        $states = [['offset' => 0, 'references' => $sourceReferenceState['initial']]];
+        array_push($states, ...$sourceReferenceState['events']);
+        foreach ($states as $stateIndex => $state) {
+            $stateEnd = $states[$stateIndex + 1]['offset'] ?? strlen($line);
+            foreach ($state['references'] as $reference) {
+                if (!is_string($reference) || $reference === '') {
+                    continue;
+                }
+
+                $receiver = (str_starts_with($reference, '$') ? '(?<![A-Za-z0-9_])' : '(?<![A-Za-z0-9_$])')
+                    . preg_quote($reference, '/') . '(?![A-Za-z0-9_])';
+                $regex = '/' . $receiver . '(?:[\'\"]\s*[\]\)]\s*)?\s*(?:\?\.|\.|\?->|->)\s*\K' . preg_quote($member, '/') . '/s';
+                preg_match_all($regex, $context, $matches, PREG_OFFSET_CAPTURE);
+                foreach ($matches[0] as [, $offset]) {
+                    $linePosition = $offset - $lineOffset;
+                    if ($linePosition >= $state['offset'] && $linePosition < $stateEnd) {
+                        $positions[] = $linePosition;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($positions));
+    }
+
+    private function sourceReferencesByLine(array $lines, array $sourceFieldHandles): array
+    {
+        $contents = implode('', $lines);
+        $assignments = [];
+        foreach (['/\bset\s+([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=|>)\s*(.*?)(?:%}|$)/s', '/(\$[A-Za-z_][A-Za-z0-9_]*)\s*=(?!=|>)\s*(.*?);/s'] as $pattern) {
+            preg_match_all($pattern, $contents, $matches, PREG_SET_ORDER | PREG_OFFSET_CAPTURE);
+            foreach ($matches as $match) {
+                $endOffset = $match[0][1] + strlen($match[0][0]);
+                $assignmentLine = substr_count(substr($contents, 0, $endOffset), "\n");
+                $lineStart = strrpos(substr($contents, 0, $endOffset), "\n");
+                $assignments[] = [
+                    'endOffset' => $endOffset,
+                    'line' => $assignmentLine,
+                    'lineOffset' => $endOffset - ($lineStart === false ? 0 : $lineStart + 1),
+                    'alias' => $match[1][0],
+                    'expression' => $match[2][0],
+                ];
+            }
+        }
+        usort($assignments, static fn(array $a, array $b): int => $a['endOffset'] <=> $b['endOffset']);
+
+        $references = $sourceFieldHandles;
+        $referencesByLine = [];
+        $assignmentIndex = 0;
+        foreach (array_keys($lines) as $lineNumber) {
+            $lineState = ['initial' => $references, 'events' => []];
+            while (($assignment = $assignments[$assignmentIndex] ?? null) && $assignment['line'] === $lineNumber) {
+                $alias = $assignment['alias'];
+                $sourceExpression = $this->lineContainsSourceReference($assignment['expression'], $references);
+                if (!in_array($alias, $sourceFieldHandles, true)) {
+                    $references = array_values(array_diff($references, [$alias]));
+                }
+                if ($sourceExpression) {
+                    $references[] = $alias;
+                }
+                $references = array_values(array_unique($references));
+                $lineState['events'][] = [
+                    'offset' => $assignment['lineOffset'],
+                    'references' => $references,
+                ];
+                $assignmentIndex++;
+            }
+            $referencesByLine[$lineNumber] = $lineState;
+        }
+
+        return $referencesByLine;
+    }
+
+    private function sourceContext(array $lines, int $lineNumber): string
+    {
+        $context = $lines[$lineNumber];
+        for ($index = $lineNumber - 1, $minimum = max(0, $lineNumber - 20); $index >= $minimum; $index--) {
+            $previous = $lines[$index];
+            $boundary = false;
+            $boundaryLength = 0;
+            foreach ([';' => 1, '}}' => 2, '%}' => 2] as $delimiter => $length) {
+                $position = strrpos($previous, $delimiter);
+                if ($position !== false && ($boundary === false || $position > $boundary)) {
+                    $boundary = $position;
+                    $boundaryLength = $length;
+                }
+            }
+            if ($boundary !== false) {
+                $context = substr($previous, $boundary + $boundaryLength) . $context;
+                break;
+            }
+
+            $context = $previous . $context;
+            if (str_contains($previous, '{{') || str_contains($previous, '{%') || str_contains($previous, '<?php')) {
+                break;
+            }
+        }
+
+        return $context;
+    }
+
+    private function withoutCommentLines(array $lines, bool $php): array
+    {
+        $contents = implode('', $lines);
+        if ($php) {
+            $masked = '';
+            foreach (token_get_all($contents) as $token) {
+                $masked .= is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)
+                    ? $this->maskComment($token[1])
+                    : (is_array($token) ? $token[1] : $token);
+            }
+        } else {
+            $masked = $this->withoutTwigComments($contents);
+        }
+
+        return preg_split('/(?<=\n)/', $masked, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    }
+
+    private function withoutTwigComments(string $contents): string
+    {
+        $masked = $contents;
+        $length = strlen($contents);
+        $state = 'data';
+        $quote = null;
+        for ($index = 0; $index < $length; $index++) {
+            if ($state === 'data') {
+                if (substr($contents, $index, 2) === '{#') {
+                    $end = strpos($contents, '#}', $index + 2);
+                    $end = $end === false ? $length : $end + 2;
+                    $comment = substr($contents, $index, $end - $index);
+                    $masked = substr_replace($masked, $this->maskComment($comment), $index, strlen($comment));
+                    $index = $end - 1;
+                } elseif (in_array(substr($contents, $index, 2), ['{{', '{%'], true)) {
+                    $state = $contents[$index + 1] === '{' ? 'variable' : 'block';
+                    $index++;
+                }
+                continue;
+            }
+
+            $character = $contents[$index];
+            if ($quote !== null) {
+                if ($character === '\\') {
+                    $index++;
+                } elseif ($character === $quote) {
+                    $quote = null;
+                }
+                continue;
+            }
+            if (substr($contents, $index, 2) === '{#') {
+                $end = strpos($contents, '#}', $index + 2);
+                $end = $end === false ? $length : $end + 2;
+                $comment = substr($contents, $index, $end - $index);
+                $masked = substr_replace($masked, $this->maskComment($comment), $index, strlen($comment));
+                $index = $end - 1;
+            } elseif ($character === '\'' || $character === '"') {
+                $quote = $character;
+            } elseif ($character === '#') {
+                $end = strpos($contents, "\n", $index);
+                $end = $end === false ? $length : $end;
+                $comment = substr($contents, $index, $end - $index);
+                $masked = substr_replace($masked, $this->maskComment($comment), $index, strlen($comment));
+                $index = $end - 1;
+            } elseif (($state === 'variable' && substr($contents, $index, 2) === '}}')
+                || ($state === 'block' && substr($contents, $index, 2) === '%}')) {
+                $state = 'data';
+                $index++;
+            }
+        }
+
+        return $masked;
+    }
+
+    private function maskComment(string $comment): string
+    {
+        return preg_replace('/[^\r\n]/', ' ', $comment) ?? $comment;
+    }
+
+    private function lineContainsSourceReference(string $line, array $sourceReferences): bool
+    {
+        foreach ($sourceReferences as $reference) {
+            $boundary = str_starts_with((string)$reference, '$') ? '(?<![A-Za-z0-9_])' : '(?<![A-Za-z0-9_$])';
+            if (is_string($reference) && $reference !== '' && preg_match('/' . $boundary . preg_quote($reference, '/') . '(?![A-Za-z0-9_])/', $line)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

@@ -1,12 +1,13 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 - 2026-08-17
 
 ### Changed
 
 - Removed the Control Panel wizard. Link Migrator now exposes its staged migration workflow through CLI commands only.
 - Added staged migration support for Typed Link Field (`lenz\\linkfield` and legacy `typedlinkfield`) sources. Audit detects fields without loading their PHP class; content migration requires the source plugin to remain installed and enabled. URL, email, phone, asset, category, entry, and valid custom URL values migrate to native Link fields, with source restrictions and supported editor attributes retained. Unsupported or unsafe values are reported and preserved by optional backups.
 - Hardened Typed Link and Hyper migration integrity: prepared native settings now normalize and validate every scalar value, unknown enabled types and explicit-empty element sources refuse preparation, stale disabled custom settings cannot broaden URL inputs, lossy attributes warn and block readiness, default text and automatic noreferrer settings are retained where supported, warning backups remain discoverable, query suffixes normalize without discarding the link, and expanded source-API scanning gates finalization.
+- Expanded mismatch scanning across Typed Link Field’s documented method and Twig getter-property API. Source-only matches are scoped to audited fields and simple aliases, portable no-argument native calls are ignored, and guidance retains text fallback, attribute override, and lossy cross-site semantics.
 
 ## 1.1.0 - 2026-08-17
 

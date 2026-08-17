@@ -27,11 +27,11 @@ Link Migrator is an independent product and is not affiliated with Verbb. Hyper 
 ## Features
 
 - **CLI only**: run the staged workflow locally, in CI, or from deployment scripts.
-- **Audit before writing**: inspect Hyper fields, supported mappings, lossy cases, and template API mismatches.
+- **Audit before writing**: inspect Hyper and Typed Link fields, supported mappings, lossy cases, and template API mismatches.
 - **Keep source data intact**: prepare parallel native Link fields instead of replacing Hyper fields in place.
 - **Migrate safely**: process content in batches, resume interrupted runs, and optionally back up each source value.
 - **Verify before cutover**: re-read migrated content and refuse finalization while non-empty source values remain unverified.
-- **Review template impact**: find common Hyper-only properties and methods that need updating.
+- **Review template impact**: find common Hyper- and Typed-Link-only properties and methods that need updating.
 - **Track every run**: write human-readable logs and JSON reports to Craft's runtime storage.
 - **Automate safely**: use dry runs, explicit write confirmation, and reports in deployment scripts.
 
@@ -82,7 +82,7 @@ php craft link-migrator/migrate/finalize --dry-run=1
 php craft link-migrator/migrate/finalize --force=1 --acknowledge-mismatches=1
 ```
 
-`audit`, `status`, and `mismatches` do not change fields, content, or migration mappings. `mismatches` intentionally exits non-zero when it finds potential Hyper API usage. Every non-dry-run write command requires `--force=1`; `finalize` additionally requires `--acknowledge-mismatches=1` when the scanner finds mismatches. A successful `content` run can still return non-zero for warnings, so resolve its report before finalizing.
+`audit`, `status`, and `mismatches` do not change fields, content, or migration mappings. `mismatches` intentionally exits non-zero when it finds potential source Link API usage. Every non-dry-run write command requires `--force=1`; `finalize` additionally requires `--acknowledge-mismatches=1` when the scanner finds mismatches. A successful `content` run can still return non-zero for warnings, so resolve its report before finalizing.
 
 ### Migrate one field
 
@@ -178,20 +178,28 @@ Source and native Link values do not expose the same Twig and PHP APIs. Run the 
 php craft link-migrator/migrate/mismatches
 ```
 
-The command exits non-zero when it finds likely mismatches, making it useful in CI and deployment checklists.
+The command exits non-zero when it finds likely mismatches, making it useful in CI and deployment checklists. Source-only API names are scoped to audited field handles and simple Twig/PHP aliases, so unrelated application methods do not block finalization. Native no-argument `getLink()`, `getElement()`, and `getUrl()` calls are left alone.
 
 Common changes include:
 
-| Hyper | Native Link |
+| Source API | Native Link |
 | --- | --- |
-| `.text` or `.linkText` | `.label` |
+| `.text` or `.linkText` | Usually `.label`; review source fallback behaviour |
 | `linkValue` | `.value` or `.url` |
-| `getElement()` | `.element` |
+| Typed Link `customText` | `.label` |
+| Typed Link `getCustomText()`, `getDefaultText()`, `getText()`, `getIntrinsicText()` | Review custom/intrinsic/default/fallback precedence explicitly; `.label` is not always equivalent |
+| Typed Link `customQuery` | `.urlSuffix` |
+| Typed Link `linkedId`, `linkedTitle`, `linkedUrl` | `.element`, `.value`, `.label`, or `.url` as appropriate |
+| Typed Link `linkedSiteId`, `getSiteId()`, cross-site helpers | Native Link cannot preserve a target site that differs from the owner site |
+| `getElement()` | `.element`; remove Typed Link’s `ignoreStatus` argument |
 | `hasElement()` | Check `.element` directly |
+| Typed Link `getRawLinkAttributes()` / `getLinkAttributes()` | `.attributes` on Craft 5.9+, or map attributes manually; merge passed overrides explicitly |
+| Typed Link `getUrl(options)` | `.url`, with URL modifications handled explicitly |
+| Typed Link setting and empty-state helpers, including Twig getter properties | Read the native value/owner element directly |
 | Hyper link classes | Short type handles such as `entry`, `asset`, or `url` |
-| `getLink()`, `getHtml()`, `getData()` | Render or map explicitly |
+| `getLink()` with source-specific arguments, `getHtml()`, `getData()` | Render or map explicitly |
 
-The scanner is a guide, not proof that every integration is compatible. GraphQL output also changes. Read [Template Impact](docs/TEMPLATE-IMPACT.md) before migrating production content.
+The scanner is a guide, not proof that every integration is compatible. GraphQL output also changes, so review template integrations before migrating production content.
 
 ## Reports, Backups, and State
 

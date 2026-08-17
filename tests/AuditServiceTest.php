@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace luremo\linkmigrator\tests;
 
+use Craft;
 use luremo\linkmigrator\services\AuditService;
 use PHPUnit\Framework\TestCase;
 
@@ -29,6 +30,391 @@ final class AuditServiceTest extends TestCase
         ] as $pattern) {
             self::assertContains($pattern, $patterns);
         }
+    }
+
+    public function testMismatchScannerFindsDocumentedTypedLinkValueApis(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getRawLinkAttributes() }}
+{{ entry.cta.getAllowCustomText() }}
+{{ entry.cta.getAllowTarget() }}
+{{ entry.cta.getAriaLabel() }}
+{{ entry.cta.getCustomText() }}
+{{ entry.cta.getDefaultText() }}
+{{ entry.cta.getEnableAriaLabel() }}
+{{ entry.cta.getEnableTitle() }}
+{{ entry.cta.getIntrinsicText() }}
+{{ entry.cta.getIntrinsicUrl() }}
+{{ entry.cta.getLinkType() }}
+{{ entry.cta.getOwnerSite() }}
+{{ entry.cta.getTarget() }}
+{{ entry.cta.getText() }}
+{{ entry.cta.getTitle() }}
+{{ entry.cta.getUrl({ scheme: 'https' }) }}
+{{ entry.cta.getSiteId() }}
+{{ entry.cta.isCrossSiteLink() }}
+{{ entry.cta.isEmpty() }}
+{{ entry.cta.customQuery }}
+{{ entry.cta.linkedId }}
+{{ entry.cta.linkedSiteId }}
+{{ entry.cta.linkedTitle }}
+TWIG,
+        ]), 'pattern');
+
+        foreach ([
+            'getRawLinkAttributes(',
+            'getAllowCustomText(',
+            'getAllowTarget(',
+            'getAriaLabel(',
+            'getCustomText(',
+            'getDefaultText(',
+            'getEnableAriaLabel(',
+            'getEnableTitle(',
+            'getIntrinsicText(',
+            'getIntrinsicUrl(',
+            'getLinkType(',
+            'getOwnerSite(',
+            'getTarget(',
+            'getText(',
+            'getTitle(',
+            'getUrl(',
+            'getSiteId(',
+            'isCrossSiteLink(',
+            'isEmpty(',
+            'customQuery',
+            'linkedId',
+            'linkedSiteId',
+            'linkedTitle',
+        ] as $pattern) {
+            self::assertContains($pattern, $patterns);
+        }
+    }
+
+    public function testMismatchScannerIgnoresPortableAndUnrelatedCalls(): void
+    {
+        self::assertSame([], $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getLink() }}
+{{ entry.cta.getElement() }}
+{{ entry.cta.getUrl() }}
+TWIG,
+            'src/Unrelated.php' => <<<'PHP'
+<?php
+$page->getText();
+$page->getTitle();
+$page->getUrl();
+$collection->isEmpty();
+PHP,
+            'templates/same-line.twig' => <<<'TWIG'
+{{ entry.cta.label }} {{ page.getText() }}
+TWIG,
+        ]));
+    }
+
+    public function testMismatchScannerFindsOnlySourceCallsWithSourceSpecificArguments(): void
+    {
+        $matches = $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getLink('Read more') }}
+{{ entry.cta.getElement(true) }}
+{{ entry.cta.getUrl({ scheme: 'https' }) }}
+TWIG,
+            'src/Unrelated.php' => "<?php\n\$page->getUrl(['scheme' => 'https']);\n",
+        ]);
+
+        self::assertSame(['getLink(', 'getElement(', 'getUrl('], array_column($matches, 'pattern'));
+    }
+
+    public function testMismatchScannerHandlesMultilineAndRepeatedArgumentCalls(): void
+    {
+        $matches = $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getLink(
+    {# no arguments
+       on multiple lines #}
+) }}
+{{ entry.cta.getElement(
+    {# no arguments
+       on multiple lines #}
+) }}
+{{ entry.cta.getUrl(
+) ?? entry.cta.getUrl({ scheme: 'https' }) }}
+{{ entry.cta.getUrl(
+    { scheme: 'https' }
+) }}
+TWIG,
+        ]);
+
+        self::assertSame(['getUrl(', 'getUrl('], array_column($matches, 'pattern'));
+    }
+
+    public function testMismatchScannerFindsTypedLinkNamespacesWithoutFieldHandles(): void
+    {
+        $patterns = array_column($this->scan([
+            'src/TypedLinks.php' => <<<'PHP'
+<?php
+use lenz\linkfield\models\Link;
+$class = 'lenz\\linkfield\\models\\Link';
+$legacy = 'typedlinkfield\\models\\Link';
+PHP,
+        ], []), 'pattern');
+
+        self::assertSame(['lenz\\linkfield', 'lenz\\\\linkfield', 'typedlinkfield'], $patterns);
+    }
+
+    public function testMismatchScannerPreservesTypedLinkTextHelperSemanticsInGuidance(): void
+    {
+        $matches = $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getCustomText('Fallback') }}
+{{ entry.cta.getDefaultText() }}
+{{ entry.cta.getText('Fallback') }}
+{{ entry.cta.getIntrinsicText() }}
+TWIG,
+        ]);
+        $replacements = array_column($matches, 'replacement', 'pattern');
+
+        self::assertStringContainsString('fallback', $replacements['getCustomText(']);
+        self::assertStringContainsString('field default', $replacements['getDefaultText(']);
+        self::assertStringContainsString('fallback', $replacements['getText(']);
+        self::assertStringContainsString('intrinsic', $replacements['getIntrinsicText(']);
+    }
+
+    public function testMismatchScannerFindsTypedLinkGetterProperties(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.allowCustomText }}
+{{ entry.cta.allowTarget }}
+{{ entry.cta.defaultText }}
+{{ entry.cta.enableAriaLabel }}
+{{ entry.cta.enableTitle }}
+{{ entry.cta.intrinsicText }}
+{{ entry.cta.intrinsicUrl }}
+{{ entry.cta.linkAttributes }}
+{{ entry.cta.rawLinkAttributes }}
+{{ entry.cta.linkType }}
+{{ entry.cta.ownerSite }}
+{{ entry.cta.siteId }}
+{{ entry.cta.crossSiteLink }}
+{{ entry.cta.empty }}
+{{ entry.cta.editorEmpty }}
+{{ entry.cta.site }}
+TWIG,
+        ]), 'pattern');
+
+        foreach ([
+            '.allowCustomText',
+            '.allowTarget',
+            '.defaultText',
+            '.enableAriaLabel',
+            '.enableTitle',
+            '.intrinsicText',
+            '.intrinsicUrl',
+            '.linkAttributes',
+            '.rawLinkAttributes',
+            '.linkType',
+            '.ownerSite',
+            '.siteId',
+            '.crossSiteLink',
+            '.empty',
+            '.editorEmpty',
+            '.site',
+        ] as $pattern) {
+            self::assertContains($pattern, $patterns);
+        }
+        self::assertSame(1, array_count_values($patterns)['.site']);
+    }
+
+    public function testMismatchScannerWarnsThatCrossSiteTargetsAreLossy(): void
+    {
+        $matches = $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getSiteId() }}
+{{ entry.cta.linkedSiteId }}
+TWIG,
+        ]);
+
+        foreach ($matches as $match) {
+            self::assertStringContainsString('cannot preserve', $match['reason']);
+        }
+    }
+
+    public function testMismatchScannerPreservesAttributeHelperOverridesInGuidance(): void
+    {
+        $matches = $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getLinkAttributes({ class: 'button' }) }}
+{{ entry.cta.getRawLinkAttributes({ rel: 'external' }) }}
+TWIG,
+        ]);
+
+        foreach ($matches as $match) {
+            self::assertStringContainsString('merge passed overrides', $match['replacement']);
+        }
+    }
+
+    public function testMismatchScannerFollowsSimpleSourceFieldAliases(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{% set link = entry.cta %}
+{{ link.getText() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link = $entry->cta;
+$link->getTitle();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame(['getText(', 'getTitle('], $patterns);
+    }
+
+    public function testMismatchScannerFollowsMultilineReceiversAndChainedAliases(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta
+    .getText() }}
+{% set link =
+    entry.cta
+%}
+{% set nested = link %}
+{{ nested.getTitle() }}
+{% set compact = entry.cta %}{{ compact
+    .getDefaultText() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link =
+    $entry->cta;
+$nested = $link;
+$nested
+    ->getCustomText();
+$compact = $entry->cta; $compact
+    ->getIntrinsicText();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame([
+            'getText(',
+            'getTitle(',
+            'getDefaultText(',
+            'getCustomText(',
+            'getIntrinsicText(',
+        ], $patterns);
+    }
+
+    public function testMismatchScannerStopsFollowingReassignedAliases(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{% set link = entry.cta %}
+{{ link.getText() }}
+{% set link = page %}
+{{ link.getTitle() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link = $entry->cta;
+$link->getCustomText();
+$link = $page;
+$link->getDefaultText();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame(['getText(', 'getCustomText('], $patterns);
+    }
+
+    public function testMismatchScannerHandlesNullsafeReceiversAndAssignmentEdges(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta?.getText() }}
+{{ entry.cta?.defaultText }}
+{% set cta = entry.cta %}
+{{ cta.getTitle() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link = $entry->cta;
+if ($link === null) {}
+$link->getCustomText();
+$link = $link->getDefaultText();
+$other = $entry->cta; $other->getIntrinsicText(); $other = $page;
+PHP,
+        ]), 'pattern');
+
+        self::assertSame([
+            'getText(',
+            '.defaultText',
+            'getTitle(',
+            'getCustomText(',
+            'getDefaultText(',
+            'getIntrinsicText(',
+        ], $patterns);
+    }
+
+    public function testMismatchScannerAppliesSameLineAssignmentsInOrder(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{% set link = entry.cta %}{% set link = page %}{{ link.getText() }}
+{{ link.getTitle() }}{% set link = entry.cta %}
+{% set link = entry.cta %}{{ link.getCustomText() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+$link = $entry->cta; $link = $page; $link->getDefaultText();
+$link->getIntrinsicText(); $link = $entry->cta;
+$link = $entry->cta; $link->getIntrinsicUrl();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame(['getCustomText(', 'getIntrinsicUrl('], $patterns);
+    }
+
+    public function testMismatchScannerIgnoresCommentsButScansExecutableSuffixes(): void
+    {
+        $patterns = array_column($this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{#
+{{ entry.cta.getText() }}
+#}
+{# note #}{{ entry.cta.getCustomText() }}
+# {{ entry.cta.getDefaultText() }}
+// {{ entry.cta.getIntrinsicText() }}
+{{ value }} {# {{ entry.cta.getTitle() }} #}
+{{ '{# literal #}' }} {{ entry.cta.getAriaLabel() }}
+{% set literal = '# not a comment' %}{{ entry.cta.getAllowTarget() }}
+TWIG,
+            'src/Template.php' => <<<'PHP'
+<?php
+/*
+$entry->cta->getTitle();
+*/ $entry->cta->getDefaultText();
+/* note */ $entry->cta->getIntrinsicText();
+// $entry->cta->getCustomText();
+# $entry->cta->getDefaultText();
+$value = 1; // $entry->cta->getText();
+$literal = '/* not a comment */'; $entry->cta->getAriaLabel();
+$literal = '// not a comment'; $entry->cta->getAllowTarget();
+PHP,
+        ]), 'pattern');
+
+        self::assertSame([
+            'getCustomText(',
+            'getDefaultText(',
+            'getIntrinsicText(',
+            'getAriaLabel(',
+            'getAllowTarget(',
+            'getDefaultText(',
+            'getIntrinsicText(',
+            'getAriaLabel(',
+            'getAllowTarget(',
+        ], $patterns);
     }
 
     public function testTypedLinkTypeExtractionHonorsDisabledRowsAndSafeDefault(): void
@@ -71,5 +457,30 @@ final class AuditServiceTest extends TestCase
         ]);
 
         self::assertNull($settings['typeSettings']['entry']['sources']);
+    }
+
+    private function scan(array $files, array $sourceFieldHandles = ['cta']): array
+    {
+        $root = sys_get_temp_dir() . '/link-migrator-' . bin2hex(random_bytes(4));
+        mkdir($root . '/templates', 0777, true);
+        mkdir($root . '/src', 0777, true);
+        foreach ($files as $path => $contents) {
+            file_put_contents($root . '/' . $path, $contents);
+        }
+
+        $previousRoot = Craft::getAlias('@root', false);
+        Craft::setAlias('@root', $root);
+
+        try {
+            return (new AuditService())->findMismatchReferences($sourceFieldHandles);
+        } finally {
+            Craft::setAlias('@root', $previousRoot === false ? null : $previousRoot);
+            foreach (array_keys($files) as $path) {
+                unlink($root . '/' . $path);
+            }
+            rmdir($root . '/templates');
+            rmdir($root . '/src');
+            rmdir($root);
+        }
     }
 }
