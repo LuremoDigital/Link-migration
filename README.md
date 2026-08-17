@@ -57,7 +57,7 @@ Link Migrator is free to use, with every feature included and no edition split.
 
 Open **Link Migrator** in the Craft Control Panel, or go directly to `/admin/link-migrator`.
 
-![Link Migrator Control Panel wizard](docs/img/cp-wizard.png)
+![Link Migrator Control Panel wizard](https://pluginscreenshots.craft-cdn.com/link-migrator/_550xAUTO_crop_center-center_none/cp-wizard.png?1784221216)
 
 The wizard walks through the migration in five stages:
 
@@ -250,7 +250,7 @@ Link Migrator is released under the [MIT License](LICENSE.txt).
 
 ## Screenshots
 
-<p align="center"><img src="docs/img/cp-wizard.png" alt="Link Migrator Control Panel wizard" width="800"></p>
+<p align="center"><img src="https://pluginscreenshots.craft-cdn.com/link-migrator/_550xAUTO_crop_center-center_none/cp-wizard.png?1784221216" alt="Link Migrator Control Panel wizard" width="800"></p>
 <p align="center"><em>The migration wizard — audit, prepare, migrate, review, and finalize in one guided workflow.</em></p>
 
 <p align="center">Built by <a href="https://github.com/LuremoDigital">Luremo</a> for the Craft CMS community.</p>
