@@ -347,23 +347,35 @@ PHP,
         ], $patterns);
     }
 
-    public function testMismatchScannerIgnoresCommentedSourceCalls(): void
+    public function testMismatchScannerIgnoresCommentsButScansExecutableSuffixes(): void
     {
-        self::assertSame([], $this->scan([
+        $patterns = array_column($this->scan([
             'templates/typed-link.twig' => <<<'TWIG'
 {#
 {{ entry.cta.getText() }}
 #}
+{# note #}{{ entry.cta.getCustomText() }}
+# {{ entry.cta.getDefaultText() }}
+// {{ entry.cta.getIntrinsicText() }}
 TWIG,
             'src/Template.php' => <<<'PHP'
 <?php
 /*
 $entry->cta->getTitle();
-*/
+*/ $entry->cta->getDefaultText();
+/* note */ $entry->cta->getIntrinsicText();
 // $entry->cta->getCustomText();
 # $entry->cta->getDefaultText();
 PHP,
-        ]));
+        ]), 'pattern');
+
+        self::assertSame([
+            'getCustomText(',
+            'getDefaultText(',
+            'getIntrinsicText(',
+            'getDefaultText(',
+            'getIntrinsicText(',
+        ], $patterns);
     }
 
     public function testTypedLinkTypeExtractionHonorsDisabledRowsAndSafeDefault(): void

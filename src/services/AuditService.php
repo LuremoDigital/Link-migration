@@ -714,7 +714,10 @@ class AuditService extends Component
                 if ($contents === false) {
                     continue;
                 }
-                $scanContents = $this->withoutCommentLines($contents);
+                $scanContents = $this->withoutCommentLines(
+                    $contents,
+                    strtolower($fileInfo->getExtension()) === 'php',
+                );
                 $sourceReferences = $this->sourceReferencesByLine($scanContents, $sourceFieldHandles);
 
                 foreach ($scanContents as $lineNumber => $line) {
@@ -872,33 +875,43 @@ class AuditService extends Component
         return $context;
     }
 
-    private function withoutCommentLines(array $lines): array
+    private function withoutCommentLines(array $lines, bool $php): array
     {
         $blockEnd = null;
         foreach ($lines as &$line) {
-            $trimmed = ltrim($line);
-            if ($blockEnd !== null) {
-                if (!str_contains($trimmed, $blockEnd)) {
-                    $line = "\n";
+            while (true) {
+                if ($blockEnd !== null) {
+                    $end = strpos($line, $blockEnd);
+                    if ($end === false) {
+                        $line = "\n";
+                        break;
+                    }
+                    $line = substr($line, $end + strlen($blockEnd));
+                    $blockEnd = null;
                     continue;
                 }
-                $blockEnd = null;
-                $line = "\n";
-                continue;
-            }
 
-            foreach (['{#' => '#}', '/*' => '*/'] as $start => $end) {
-                if (str_starts_with($trimmed, $start)) {
-                    if (!str_contains($trimmed, $end)) {
-                        $blockEnd = $end;
+                $trimmed = ltrim($line);
+                foreach ($php ? ['/*' => '*/'] : ['{#' => '#}'] as $start => $endMarker) {
+                    if (!str_starts_with($trimmed, $start)) {
+                        continue;
                     }
-                    $line = "\n";
+
+                    $startOffset = strlen($line) - strlen($trimmed);
+                    $end = strpos($line, $endMarker, $startOffset + strlen($start));
+                    if ($end === false) {
+                        $blockEnd = $endMarker;
+                        $line = "\n";
+                        continue 3;
+                    }
+                    $line = substr($line, 0, $startOffset) . substr($line, $end + strlen($endMarker));
                     continue 2;
                 }
-            }
 
-            if (str_starts_with($trimmed, '//') || str_starts_with($trimmed, '#')) {
-                $line = "\n";
+                if ($php && (str_starts_with($trimmed, '//') || str_starts_with($trimmed, '#'))) {
+                    $line = "\n";
+                }
+                break;
             }
         }
         unset($line);
