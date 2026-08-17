@@ -1,11 +1,16 @@
 # Changelog
 
-## 1.1.0 - 2026-07-10
+## 1.1.0 - 2026-08-17
 
 ### Added
 
 - `link-migrator/migrate/adopt-prepared` CLI command: records source-to-target mappings for native Link fields that arrived through deployed project config, enabling the local prepare → deploy YAML → migrate content per environment workflow. Supports `--dry-run=1`, requires `--force=1` to write, and accepts `--field` with `--target` for non-convention handles. Refuses to guess between multiple candidate handles, warns when the matched field does not allow the mapped link types, and exits non-zero when nothing was adopted or previously recorded.
 - README section on multi-environment deployment covering the two-deploy workflow and its ordering requirements.
+
+### Fixed
+
+- Finalization now compares live content directly instead of trusting a persisted readiness phase.
+- Reconciliation recognizes Craft's stored entry/category references and `mailto:`/`tel:` values, preventing valid migrations from being blocked at cutover.
 
 ## 1.0.0 - 2026-07-09
 

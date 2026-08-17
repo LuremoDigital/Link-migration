@@ -33,11 +33,4 @@ class FieldMapping extends Model
         ], true);
     }
 
-    public function isContentReady(): bool
-    {
-        return in_array($this->phase, [
-            self::PHASE_READY_TO_FINALIZE,
-            self::PHASE_FINALIZED,
-        ], true);
-    }
 }

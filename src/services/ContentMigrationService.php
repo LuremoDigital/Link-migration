@@ -42,7 +42,7 @@ class ContentMigrationService extends Component
             if (!$fieldMapping?->targetHandle) {
                 $result->recordError([
                     'field' => $fieldAudit->handle,
-                    'reason' => 'Field has not been prepared yet. Run prepare-fields first.',
+                    'reason' => 'Field has not been prepared here. Run prepare-fields locally, deploy and apply project config, then run adopt-prepared --force=1.',
                 ]);
                 continue;
             }
@@ -386,7 +386,14 @@ class ContentMigrationService extends Component
         }
 
         if (in_array($type, ['asset', 'category', 'entry'], true)) {
+            if (is_string($value) && preg_match('/^\{(?:asset|category|entry):(\d+)@/', $value, $matches)) {
+                $value = $matches[1];
+            }
             $value = is_numeric($value) ? (int)$value : $value;
+        } elseif ($type === 'email' && is_string($value)) {
+            $value = trim((string)preg_replace('/^mailto:/i', '', trim($value)));
+        } elseif ($type === 'tel' && is_string($value)) {
+            $value = trim((string)preg_replace('/^tel:/i', '', trim($value)));
         } elseif (is_scalar($value)) {
             $value = trim((string)$value);
         }

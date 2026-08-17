@@ -42,10 +42,6 @@ class CutoverService extends Component
                     continue;
                 }
 
-                if (!$mapping->isContentReady()) {
-                    throw new \RuntimeException('Content migration has not completed for this field.');
-                }
-
                 $targetField = $this->findFieldByHandle($mapping->targetHandle);
                 $sourceField = $fieldsService->getFieldById($fieldAudit->fieldId);
                 if (!$sourceField || !$targetField) {
