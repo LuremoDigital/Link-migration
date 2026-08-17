@@ -123,6 +123,40 @@ TWIG,
         self::assertSame(['getLink(', 'getElement(', 'getUrl('], array_column($matches, 'pattern'));
     }
 
+    public function testMismatchScannerHandlesMultilineAndRepeatedArgumentCalls(): void
+    {
+        $matches = $this->scan([
+            'templates/typed-link.twig' => <<<'TWIG'
+{{ entry.cta.getLink(
+    {# no arguments #}
+) }}
+{{ entry.cta.getElement(
+) }}
+{{ entry.cta.getUrl(
+) ?? entry.cta.getUrl({ scheme: 'https' }) }}
+{{ entry.cta.getUrl(
+    { scheme: 'https' }
+) }}
+TWIG,
+        ]);
+
+        self::assertSame(['getUrl(', 'getUrl('], array_column($matches, 'pattern'));
+    }
+
+    public function testMismatchScannerFindsTypedLinkNamespacesWithoutFieldHandles(): void
+    {
+        $patterns = array_column($this->scan([
+            'src/TypedLinks.php' => <<<'PHP'
+<?php
+use lenz\linkfield\models\Link;
+$class = 'lenz\\linkfield\\models\\Link';
+$legacy = 'typedlinkfield\\models\\Link';
+PHP,
+        ], []), 'pattern');
+
+        self::assertSame(['lenz\\linkfield', 'lenz\\\\linkfield', 'typedlinkfield'], $patterns);
+    }
+
     public function testMismatchScannerPreservesTypedLinkTextHelperSemanticsInGuidance(): void
     {
         $matches = $this->scan([
@@ -274,7 +308,7 @@ PHP,
         self::assertNull($settings['typeSettings']['entry']['sources']);
     }
 
-    private function scan(array $files): array
+    private function scan(array $files, array $sourceFieldHandles = ['cta']): array
     {
         $root = sys_get_temp_dir() . '/link-migrator-' . bin2hex(random_bytes(4));
         mkdir($root . '/templates', 0777, true);
@@ -287,7 +321,7 @@ PHP,
         Craft::setAlias('@root', $root);
 
         try {
-            return (new AuditService())->findMismatchReferences(['cta']);
+            return (new AuditService())->findMismatchReferences($sourceFieldHandles);
         } finally {
             Craft::setAlias('@root', $previousRoot === false ? null : $previousRoot);
             foreach (array_keys($files) as $path) {

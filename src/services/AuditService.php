@@ -720,7 +720,7 @@ class AuditService extends Component
                     foreach (self::MISMATCH_PATTERNS as $mismatch) {
                         foreach ([$mismatch['pattern'], ...($mismatch['aliases'] ?? [])] as $pattern) {
                             $candidate = [...$mismatch, 'pattern' => $pattern];
-                            if (!$this->lineMatchesMismatch($line, $candidate, $sourceReferences)) {
+                            if (!$this->lineMatchesMismatch($contents, $lineNumber, $candidate, $sourceReferences)) {
                                 continue;
                             }
 
@@ -741,8 +741,9 @@ class AuditService extends Component
         return $matches;
     }
 
-    private function lineMatchesMismatch(string $line, array $mismatch, array $sourceReferences): bool
+    private function lineMatchesMismatch(array $lines, int $lineNumber, array $mismatch, array $sourceReferences): bool
     {
+        $line = $lines[$lineNumber];
         $pattern = $mismatch['pattern'];
         $containsPattern = str_starts_with($pattern, '.')
             ? preg_match('/' . preg_quote($pattern, '/') . '(?![A-Za-z0-9_])/', $line) === 1
@@ -756,8 +757,26 @@ class AuditService extends Component
         }
 
         if (!empty($mismatch['argumentsOnly'])) {
-            $tail = substr($line, strpos($line, $pattern) + strlen($pattern));
-            return preg_match('/^\s*\)/', $tail) !== 1;
+            $offset = 0;
+            while (($position = strpos($line, $pattern, $offset)) !== false) {
+                $tail = substr($line, $position + strlen($pattern));
+                $nextLine = $lineNumber + 1;
+                while (true) {
+                    $tail = preg_replace('/^\s*(?:(?:\{#.*?#\}|\/\*.*?\*\/|\/\/[^\r\n]*|#[^\r\n]*)\s*)+/s', '', $tail) ?? $tail;
+                    if (trim($tail) !== '' || !isset($lines[$nextLine])) {
+                        break;
+                    }
+                    $tail .= $lines[$nextLine++];
+                }
+
+                if (preg_match('/^\s*\)/', $tail) !== 1) {
+                    return true;
+                }
+
+                $offset = $position + strlen($pattern);
+            }
+
+            return false;
         }
 
         return true;
